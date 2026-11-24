@@ -1,4 +1,4 @@
-import { rect, stars, glow, vgrad } from '../render/pixel.js';
+import { rect, stars, glow, vgrad, crescent } from '../render/pixel.js';
 
 export const room = {
   id: 'room',
@@ -19,7 +19,7 @@ export const room = {
     rect(c, 28, 24, 64, 52, '#1c2350');
     stars(c, 64, 52, 0, 1);
     c.save(); c.translate(28, 24); stars(c, 64, 52, 24, 9, '#fff6d0'); c.restore();
-    rect(c, 72, 30, 6, 9, '#fff1b8'); rect(c, 71, 31, 1, 7, '#fff1b8'); rect(c, 75, 31, 4, 7, '#1c2350'); // 초승달
+    crescent(c, 76, 34, 5, '#fff1b8', '#1c2350'); // 초승달
     rect(c, 59, 24, 2, 52, '#3a2620'); rect(c, 28, 49, 64, 2, '#3a2620');
     rect(c, 18, 16, 14, 70, '#c4687a'); rect(c, 88, 16, 14, 70, '#c4687a'); // 커튼
     for (let y = 18; y < 86; y += 6) { rect(c, 22, y, 1, 4, '#a24f60'); rect(c, 95, y, 1, 4, '#a24f60'); }

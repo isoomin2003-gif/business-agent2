@@ -99,3 +99,18 @@ export function bench(c, x, w, seatY, wood = '#8a5a3c', dark = '#5a3a26') {
   rect(c, x + 3, seatY + 2, 2, 7, '#2b2b33'); rect(c, x + w - 5, seatY + 2, 2, 7, '#2b2b33');
   if (w > 60) rect(c, x + Math.floor(w / 2) - 1, seatY + 2, 2, 7, '#2b2b33');
 }
+
+/** 안티앨리어싱 없는 픽셀 원 */
+export function disc(c, cx, cy, r, col) {
+  c.fillStyle = col;
+  for (let dy = -r; dy <= r; dy++) {
+    const w = Math.floor(Math.sqrt(r * r - dy * dy));
+    c.fillRect(Math.round(cx - w), Math.round(cy + dy), w * 2 + 1, 1);
+  }
+}
+
+/** 초승달: 밝은 원 위에 하늘색 원을 겹침 */
+export function crescent(c, cx, cy, r, light, sky) {
+  disc(c, cx, cy, r, light);
+  disc(c, cx + Math.ceil(r * 0.6), cy - Math.ceil(r * 0.3), r, sky);
+}
