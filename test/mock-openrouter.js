@@ -41,6 +41,22 @@ export function discoverTurn(messages) {
   return { role: 'assistant', content: JSON.stringify({ picks }) };
 }
 
+// AI 작곡 흉내: 문장에 따라 정해진 악보(JSON). '거절'이 있으면 refuse, '엉망'이 있으면 형식이 깨진 답
+export function composeTurn(text) {
+  if (/거절/.test(text)) return '{"refuse": true}';
+  if (/엉망/.test(text)) return '악보를 쓰는 중이에요...';
+  const fast = /신나|빠른/.test(text);
+  return 'JSON입니다\n' + JSON.stringify({
+    title: fast ? '옥상 점프' : '첫눈 골목', mood: fast ? '신나는 8비트' : '따뜻하고 느린 오르골', bpm: fast ? 132 : 76, key: 'F', scale: 'major',
+    lead: fast ? 'square' : 'musicbox', pad: 'sine', bass: 'triangle', drums: fast ? 'beat' : 'soft',
+    sections: {
+      A: { chords: [1, 5, 6, 4], melody: [[5, 4], [6, 2], [5, 2], [3, 4], [1, 4], [2, 4], [3, 2], [5, 2], [4, 8], [3, 4], [5, 4], [8, 8], [7, 4], [6, 4], [5, 8]] },
+      B: { chords: [4, 1, 5, 1], melody: [[6, 4], [8, 4], [7, 4], [6, 4], [5, 8], [3, 8], [4, 4], [5, 4], [6, 4], [7, 4], [8, 30]] }, // 길이 합 초과 → 서버가 잘라 맞춤
+    },
+    form: ['A', 'A', 'B', 'A'],
+  });
+}
+
 export function startMockOpenRouter(port = 0, logFile) {
   const server = http.createServer((req, res) => {
     let body = '';
@@ -50,6 +66,7 @@ export function startMockOpenRouter(port = 0, logFile) {
       if (logFile) fs.appendFileSync(logFile, JSON.stringify({ url: req.url, auth: req.headers.authorization ? 'present' : 'missing', body: parsed }) + '\n');
       if (req.url.startsWith('/fail')) { res.writeHead(503, { 'Content-Type': 'application/json' }); return res.end('{"error":{"message":"mock outage"}}'); }
       res.writeHead(200, { 'Content-Type': 'application/json' });
+      if (/AI 작곡가/.test(parsed.messages?.[0]?.content || '')) return res.end(JSON.stringify({ model: 'mock/compose', choices: [{ message: { role: 'assistant', content: composeTurn(parsed.messages.find((m) => m.role === 'user').content) } }] }));
       if (parsed.tools) return res.end(JSON.stringify({ model: 'mock/discover', choices: [{ message: discoverTurn(parsed.messages) }] }));
       const user = parsed.messages.find((m) => m.role === 'user').content;
       res.end(JSON.stringify({ model: 'mock/agent', choices: [{ message: { role: 'assistant', content: JSON.stringify(decide(user)) } }] }));

@@ -293,3 +293,6 @@ textarea#d-text { font-size: 18px; line-height: 1.8; }
 .credit a { color: var(--cyan); }
 .radio-links { margin-top: 14px; font-size: 13px; color: var(--muted); }
 #dc-more { margin-top: 10px; }
+.compose-result { display: flex; flex-direction: column; gap: 6px; }
+.compose-result .t { font-family: var(--font-pixel); font-size: 14px; font-weight: 700; color: var(--pink); }
+.compose-result audio { width: 100%; margin: 4px 0; }

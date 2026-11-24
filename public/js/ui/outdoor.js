@@ -31,6 +31,7 @@ const demoKeyOf = () => { try { return localStorage.getItem('haruDemoKey') || ''
 
 /** 외부 곡의 라이선스·저작자 표시 한 줄 */
 function creditLine(t) {
+  if (t.kind === 'generated') return `<div class="credit">${esc(t.attribution)} · ${esc(t.license)}</div>`;
   if (!t.external && !t.needsAttribution) return '';
   const lic = t.licenseUrl ? `<a href="${esc(t.licenseUrl)}" target="_blank" rel="noopener">${esc(t.license)}</a>` : esc(t.license);
   const src = t.sourceUrl ? ` · <a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">원본</a>` : '';
@@ -57,7 +58,14 @@ export async function openRadio({ getState, myUserId }) {
         <p class="ai-note">추천은 나에게만 보여요. 곡 옆의 신청을 눌러야 옥상 대기열에 들어가요.</p>
         <div id="dc-out" aria-live="polite"></div>
       </div>
-      ${compose ? '<div data-pane="compose" hidden></div>' : ''}
+      ${compose ? `<div data-pane="compose" hidden>
+        <form class="row" id="cp-form" autocomplete="off">
+          <input type="text" id="cp-q" maxlength="60" style="flex:1;min-width:200px" placeholder="첫눈 오는 골목, 따뜻한 코코아" aria-label="오늘의 단어">
+          <button class="btn btn-primary" id="cp-go">곡 만들기</button>
+        </form>
+        <p class="ai-note">적은 문장만 AI에게 보내요. AI가 새 악보를 쓰고 서버가 8비트 소리로 연주해 30초~1분짜리 가사 없는 연주곡을 만들어요. 미리 듣기는 나에게만 들려요.</p>
+        <div id="cp-out" aria-live="polite"></div>
+      </div>` : ''}
       <div class="radio-links"><button class="link-btn" data-go="queue">기본 선곡표에서 신청</button> · <button class="link-btn" data-go="info">음원 정보</button></div>
       <div data-pane="queue" hidden></div><div data-pane="info" hidden></div>`,
   });
@@ -160,10 +168,56 @@ export async function openRadio({ getState, myUserId }) {
   }
   m.$('#dc-form').addEventListener('submit', (e) => { e.preventDefault(); discoverNow(false); });
 
+  // ── 오늘의 단어로 작곡하기 ──
+  let composing = false;
+  const radioEl = document.getElementById('radio-audio');
+  let ducked = null; // 미리 듣는 동안 내 화면의 라디오 소리만 줄임 (공용 재생은 그대로)
+  const duck = (on) => {
+    if (on && ducked === null) { ducked = radioEl.volume; radioEl.volume = ducked * 0.2; }
+    else if (!on && ducked !== null) { radioEl.volume = ducked; ducked = null; }
+  };
+  async function composeNow() {
+    const out2 = m.$('#cp-out');
+    const text = m.$('#cp-q').value.trim();
+    if (!text) { m.$('#cp-q').focus(); return; }
+    if (composing) return;
+    composing = true; m.$('#cp-go').disabled = true; duck(false);
+    out2.innerHTML = '<div class="result searching"><span class="dots"></span> 곡을 만드는 중이에요… (보통 10~30초)</div>';
+    let r;
+    try { r = await api('/api/compose', { method: 'POST', body: { text } }); } catch (e) { r = { status: e.status === 429 ? 'rate' : 'error', message: e.message }; }
+    composing = false; if (m.$('#cp-go')) m.$('#cp-go').disabled = false;
+    if (!out2.isConnected) return;
+    if (r.status === 'ok') {
+      const d = r.draft;
+      out2.innerHTML = `<div class="result compose-result" data-status="ok">
+        <div class="t">♪ ${esc(d.title)}</div>
+        <div class="muted">${esc(d.mood)}</div>
+        <div class="muted compose-meta">길이 ${fmtTime(d.durationSec)} · ${d.bpm} BPM · ${esc(d.key)} · ${esc(d.lead)}</div>
+        <audio id="cp-audio" controls preload="auto" src="${esc(d.previewUrl)}"></audio>
+        <div class="row"><button class="btn btn-primary" id="cp-req">옥상 라디오에 신청</button><button class="btn btn-small" id="cp-again">다시 만들기</button></div>
+        <p class="status" id="cp-status"></p></div>`;
+      const au = m.$('#cp-audio');
+      au.addEventListener('loadedmetadata', () => { m.$('.compose-meta').textContent = `실제 길이 ${fmtTime(au.duration)} · ${d.bpm} BPM · ${d.key} · ${d.lead}`; });
+      au.addEventListener('play', () => duck(true));
+      au.addEventListener('pause', () => duck(false));
+      au.addEventListener('ended', () => duck(false));
+      m.$('#cp-req').addEventListener('click', () => { au.pause(); requestTrack(m.$('#cp-req'), d.id, m.$('#cp-status')); });
+      m.$('#cp-again').addEventListener('click', () => { au.pause(); composeNow(); });
+    } else if (r.status === 'refused' || r.status === 'bad_text' || r.status === 'rate') {
+      out2.innerHTML = `<div class="result" data-status="${r.status}"><p class="answer">${esc(r.message)}</p></div>`;
+      m.$('#cp-q').focus();
+    } else {
+      out2.innerHTML = `<div class="result" data-status="error"><p class="answer">곡을 만들지 못했어요. 잠시 후 다시 시도해 주세요.</p>
+        <button class="btn btn-small" id="cp-retry">다시 시도</button></div>`;
+      m.$('#cp-retry').addEventListener('click', composeNow);
+    }
+  }
+  if (compose) m.$('#cp-form').addEventListener('submit', (e) => { e.preventDefault(); composeNow(); });
+
   renderNow(); renderQueue(); renderInfo();
   const timer = setInterval(renderNow, 1000);
   const off = net.on('radio', () => { renderNow(); if (!m.$('[data-pane="queue"]').hidden) renderQueue(); });
-  cleanup = () => { clearInterval(timer); off(); };
+  cleanup = () => { clearInterval(timer); off(); m.$('#cp-audio')?.pause(); duck(false); };
   return m;
 }
 

@@ -4,7 +4,7 @@ import { TRACK_BY_ID } from './tracks.js';
 
 const added = new Map(); // id → 재생용 곡 정보
 
-const LICENSE_NAME = { cc0: 'CC0', pdm: 'Public Domain Mark', by: 'CC BY', 'by-sa': 'CC BY-SA' };
+const LICENSE_NAME = { cc0: 'CC0', pdm: 'Public Domain Mark', by: 'CC BY', 'by-sa': 'CC BY-SA', generated: '이 사이트에서 AI로 만든 곡' };
 export const licenseLabel = (license, version) => `${LICENSE_NAME[license] || license.toUpperCase()}${version && license !== 'cc0' && license !== 'pdm' ? ` ${version}` : ''}`;
 
 function toPlayable(r) {

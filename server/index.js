@@ -10,7 +10,8 @@ import { memoryRouter } from './memory.js';
 import { wishRouter } from './wishes.js';
 import { setupRealtime, counts, fireStar, getRadio, renameLive } from './realtime.js';
 import { TRACKS } from './tracks.js';
-import { loadLibrary, addedTracks } from './library.js';
+import { loadLibrary, addedTracks, getTrack } from './library.js';
+import { compose, getDraft, storageKey } from './compose.js';
 import { OUTDOOR } from '../public/js/shared/places.js';
 
 const db = await initDb();
@@ -60,7 +61,32 @@ app.post('/api/guest', express.json(), wrap(async (req, res) => {
 }));
 
 app.get('/api/places', (req, res) => res.json({ counts: counts() }));
-app.get('/api/radio/tracks', (req, res) => res.json({ tracks: TRACKS, added: addedTracks(), features: { compose: false } }));
+// 작곡하기는 AI 키가 있어 실제로 쓸 수 있을 때만 공개
+app.get('/api/radio/tracks', (req, res) => res.json({ tracks: TRACKS, added: addedTracks(), features: { compose: !!config.openrouter.apiKey } }));
+
+// ── 오늘의 단어로 작곡하기 ──
+const composeTimes = new Map(); // userId → 최근 요청 시각들 (10분에 5곡까지)
+app.post('/api/compose', express.json(), requireUser, wrap(async (req, res) => {
+  const now = Date.now();
+  const times = (composeTimes.get(req.user.id) || []).filter((t) => now - t < 10 * 60_000);
+  if (times.length >= 5) return res.status(429).json({ status: 'rate', message: '곡은 10분에 다섯 곡까지 만들 수 있어요. 잠시 후 다시 해 주세요.' });
+  times.push(now); composeTimes.set(req.user.id, times);
+  const r = await compose(req.body?.text, req.user.id); // 사용자의 문장만 AI에게 보냄
+  res.json(r);
+}));
+// 미리 듣기: 만든 사람만
+app.get('/api/compose/:id/audio', requireUser, (req, res) => {
+  const d = getDraft(req.params.id, req.user.id);
+  if (!d) return res.status(404).json({ error: 'not_found' });
+  res.set('Cache-Control', 'private, no-store');
+  res.type('audio/wav').sendFile(d.file, { acceptRanges: true });
+});
+// 신청되어 라디오에 올라간 AI 작곡곡: 누구나 (저장소 주소는 서버가 그때그때 만듦)
+app.get('/api/radio/audio/:id', wrap(async (req, res) => {
+  const t = getTrack(req.params.id);
+  if (!t || t.kind !== 'generated') return res.status(404).json({ error: 'not_found' });
+  await storage.serve(res, storageKey(t.id), 'audio/wav');
+}));
 app.get('/api/samples', (req, res) => res.json({ samples: Object.entries(SAMPLE_VIDEOS).map(([id, s]) => ({ id, title: s.title, poster: s.poster })) }));
 // 어떤 저장 방식이 쓰이는지(값이나 주소는 노출하지 않음)
 const STARTED_AT = new Date().toISOString();
