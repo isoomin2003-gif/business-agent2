@@ -167,7 +167,6 @@ export async function discover(text, exclude) {
       }
       continue;
     }
-    trace.push({ kind: 'raw', content: String(msg.content || '').slice(0, 800) }); // TEMP-DIAG
     // 최종 선택: 후보에 있는 서로 다른 곡만, 실제 재생 확인을 통과한 곡만
     let picks = [];
     try { picks = JSON.parse(String(msg.content || '').match(/\{[\s\S]*\}/)?.[0] || '{}').picks || []; } catch { picks = []; }
