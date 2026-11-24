@@ -41,3 +41,14 @@ export async function registerTrack(t, requestedBy) {
   added.set(p.id, p);
   return p;
 }
+
+/** 지정한 곡을 라디오 목록에서 지움 (AI 작곡곡이면 저장소 파일도) — 점검용 신청곡 정리 */
+export async function removeTracks(ids, removeFile) {
+  let n = 0;
+  for (const id of ids) {
+    const r = await getDb().run('DELETE FROM radio_tracks WHERE id = ?', [id]);
+    if (id.startsWith('ai:')) await removeFile(id).catch((e) => console.warn('[radio] file remove failed', e.message));
+    if (added.delete(id) || r?.changes) n++;
+  }
+  return n;
+}
