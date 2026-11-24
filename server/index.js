@@ -85,6 +85,23 @@ app.post('/api/admin/radio/fast-forward', requireAdmin, express.json(), (req, re
   res.json({ ok: true, radio: getRadio().snapshot() });
 });
 app.get('/api/admin/check', requireAdmin, (req, res) => res.json({ ok: true }));
+// TEMP-DIAG: 배포 환경에서 외부 음원 검색·재생 확인이 되는지 점검용 (확인 후 바로 삭제)
+app.get('/api/diag-845f3a52e1c633e29f587fd5', async (req, res) => {
+  const out = {};
+  try {
+    const r = await fetch('https://api.openverse.org/v1/audio/?q=rain%20guitar&category=music&license=cc0,pdm,by,by-sa&page_size=5', { headers: { 'User-Agent': 'HaruHanjang/1.0 (class project radio)' } });
+    out.openverse = { status: r.status, type: r.headers.get('content-type') };
+    const j = r.ok ? await r.json() : null;
+    out.count = j?.results?.length ?? null;
+    const url = j?.results?.[0]?.url;
+    if (url) {
+      const a = await fetch(url, { headers: { Range: 'bytes=0-2047' }, redirect: 'follow' });
+      out.audio = { status: a.status, type: a.headers.get('content-type'), finalHost: new URL(a.url).host };
+      await a.body?.cancel().catch(() => {});
+    }
+  } catch (e) { out.error = e.message; }
+  res.json(out);
+});
 
 // 페이지·JS·CSS는 매번 서버에 새 버전이 있는지 확인(no-cache + ETag)해서, 배포 직후에도 옛 화면이 남지 않게 합니다.
 // 음원·샘플 영상·이미지는 바뀌지 않으므로 하루 동안 캐시합니다.
