@@ -100,6 +100,11 @@ app.get('/api/diag-845f3a52e1c633e29f587fd5', async (req, res) => {
       await a.body?.cancel().catch(() => {});
     }
   } catch (e) { out.error = e.message; }
+  try {
+    const { discover } = await import('./discover.js');
+    const r = await discover(String(req.query.q || '비 오는 밤에 어울리는 잔잔한 기타곡'), new Set());
+    out.discover = { status: r.status, picks: r.picks.map((p) => p.title), trace: r.trace };
+  } catch (e) { out.discoverError = e.message; }
   res.json(out);
 });
 
