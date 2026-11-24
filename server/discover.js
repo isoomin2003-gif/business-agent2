@@ -40,11 +40,9 @@ function toCandidate(r) {
   if (NOT_MUSIC.test(words)) return null;
   // Freesound는 효과음·현장 녹음이 많아 음악임을 알 수 있는 태그·제목이 있는 것만
   if ((r.source || r.provider) === 'freesound' && !MUSIC_WORDS.test(words)) return null;
-  // Wikimedia의 ogg·wav 등은 Wikimedia가 만들어 둔 MP3 변환본을 먼저 씀 (아이폰 등 ogg를 못 트는 브라우저 대비)
-  const wm = r.url.match(/^(https:\/\/upload\.wikimedia\.org\/wikipedia\/commons)\/(\w)\/(\w\w)\/([^/?]+\.(ogg|oga|wav|flac|opus|webm))$/i);
   return {
     id: `ov:${r.id}`, source: r.source || r.provider, title: decode(r.title), artist: decode(r.creator) || '(작자 미상)',
-    audioUrl: wm ? `${wm[1]}/transcoded/${wm[2]}/${wm[3]}/${wm[4]}/${wm[4]}.mp3` : r.url, altUrl: wm ? r.url : '', sourceUrl: r.foreign_landing_url || '', license: r.license, licenseVersion: r.license_version || '',
+    audioUrl: r.url, sourceUrl: r.foreign_landing_url || '', license: r.license, licenseVersion: r.license_version || '',
     licenseUrl: r.license_url || '', attribution: decode(r.attribution), durationMs: r.duration,
     genres: (r.genres || []).slice(0, 4), tags: (r.tags || []).map((t) => t.name).filter(Boolean).slice(0, 10),
   };
@@ -55,8 +53,9 @@ const cache = new Map(); // 검색어 → { at, results } (10분) — 익명 이
 async function openverseQuery(q) {
   const hit = cache.get(q);
   if (hit && Date.now() - hit.at < 10 * 60_000) return hit.results;
-    // CC0·PD 음원은 Jamendo에 없고 대부분 Wikimedia(옛 클래식 녹음 등)·Freesound에 있으며, 이 둘은 '음악' 분류가 비어 있어 분류 대신 출처로 찾음
-  const params = PD_ONLY ? { source: 'wikimedia_audio,freesound' } : { category: 'music' };
+    // CC0·PD 음악은 Jamendo에 없고 Freesound·Wikimedia에 있는데, 둘 다 '음악' 분류가 비어 있어 분류 대신 출처로 찾음.
+  // Wikimedia 음원은 배포 서버에서 재생 확인 요청이 거부되어(실제 재생 가능 여부를 확인할 수 없음) 제외하고 Freesound만 씀
+  const params = PD_ONLY ? { source: 'freesound' } : { category: 'music' };
   const url = `${OPENVERSE}/audio/?${new URLSearchParams({ q: q.slice(0, 80), ...params, license: LICENSES.join(','), page_size: '20', mature: 'false' })}`;
   const res = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': 'HaruHanjang/1.0 (class project radio)', ...(OPENVERSE_TOKEN ? { Authorization: `Bearer ${OPENVERSE_TOKEN}` } : {}) } });
   if (res.status === 429) throw Object.assign(new Error('음악 검색 요청이 너무 많아요.'), { code: 'rate' });
@@ -204,10 +203,7 @@ export async function discover(text, exclude) {
       const id = String(p?.id || '');
       const c = pool.get(id) || pool.get(`ov:${id}`);
       if (!c || chosen.some((x) => x.id === c.id || norm(x.title) === norm(c.title))) continue;
-      if (!(await isPlayable(c.audioUrl))) {
-        if (c.altUrl && (await isPlayable(c.altUrl))) c.audioUrl = c.altUrl;
-        else { trace.push({ kind: 'unplayable', id: c.id }); continue; }
-      }
+      if (!(await isPlayable(c.audioUrl))) { trace.push({ kind: 'unplayable', id: c.id }); continue; }
       chosen.push({ ...c, reason: String(p.reason || '').slice(0, 120) });
       if (chosen.length >= MAX_PICKS) break;
     }

@@ -95,16 +95,6 @@ app.get('/healthz', (req, res) => res.json({
   commit: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || undefined,
 }));
 
-// TEMP-DIAG (확인 후 삭제)
-app.get('/api/diag-a1fd911ebbfeec431b8348fb', wrap(async (req, res) => {
-  const { discover, searchMusic, isPlayable } = await import('./discover.js');
-  const out = {};
-  const found = await searchMusic(String(req.query.q || 'calm piano').split('/'), new Set());
-  out.search = [];
-  for (const c of found.slice(0, 6)) out.search.push({ t: c.title, s: c.source, u: c.audioUrl.slice(-30), ok: await isPlayable(c.audioUrl), alt: c.altUrl ? await isPlayable(c.altUrl) : null });
-  if (req.query.text) out.run = await discover(String(req.query.text), new Set());
-  res.json(out);
-}));
 app.use('/api', diaryRouter);
 app.use('/api', memoryRouter);
 app.use('/api', wishRouter);
