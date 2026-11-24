@@ -103,8 +103,8 @@ export const PROMPT = `너는 '하루 한 장' 옥상 라디오의 음악 추천
 - 검색 결과의 장르·태그(악기·분위기·빠르기)를 보고 요청에 가장 가까운 서로 다른 곡을 골라. 완벽히 맞지 않아도 핵심(악기나 분위기)이 맞으면 골라도 돼. 같은 아티스트의 비슷한 곡을 여러 개 고르지 마.
 - 태그에 vocal, male, female이 있으면 노래가 있는 곡이야. 요청이 연주곡이면 instrumental 태그가 있는 곡을 우선해.
 - 반드시 검색 결과에 있는 id만 써. 곡명이나 주소를 지어내지 마. 어울리는 곡이 3개보다 적으면 찾은 만큼만 골라.
-- 너는 곡을 들을 수 없어. 추천 이유는 검색 결과에 적힌 장르·태그만 근거로 한국어 한 줄로 써.
-- 마지막 답은 JSON 하나만: {"picks":[{"id":"ov:...","reason":"한 줄"}]} (없으면 {"picks":[]})`;
+- 너는 곡을 들을 수 없어. 추천 이유는 검색 결과에 적힌 장르·태그만 근거로 한국어 한 줄(40자 이내)로 써.
+- 마지막 답은 다른 설명 없이 JSON 하나만: {"picks":[{"id":"ov:...","reason":"한 줄"}]} (없으면 {"picks":[]})`;
 
 async function chat(messages) {
   if (!config.openrouter.apiKey) return { ok: false, status: 'no_key' };
@@ -114,7 +114,7 @@ async function chat(messages) {
     const res = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
       method: 'POST', signal: ctrl.signal,
       headers: { Authorization: `Bearer ${config.openrouter.apiKey}`, 'Content-Type': 'application/json', ...(config.publicUrl ? { 'HTTP-Referer': config.publicUrl } : {}), 'X-Title': 'Haru Hanjang Radio' },
-      body: JSON.stringify({ model: config.openrouter.model, temperature: 0.4, max_tokens: 600, messages, tools: [SEARCH_TOOL], tool_choice: 'auto' }),
+      body: JSON.stringify({ model: config.openrouter.model, temperature: 0.4, max_tokens: 1500, messages, tools: [SEARCH_TOOL], tool_choice: 'auto' }),
     });
     if (!res.ok) { console.warn(`[discover] OpenRouter HTTP ${res.status}`); return { ok: false, status: 'api_error', code: res.status }; }
     const data = await res.json();
@@ -123,6 +123,19 @@ async function chat(messages) {
     console.warn(`[discover] OpenRouter error: ${e.message}`);
     return { ok: false, status: 'api_error' };
   } finally { clearTimeout(timer); }
+}
+
+/**
+ * 모델의 최종 답에서 고른 곡 목록을 읽음. 앞뒤 설명·코드 블록이 붙거나 답이 중간에 끊겨도
+ * 완성된 {"id":..., "reason":...} 항목은 살림 (id는 어차피 실제 후보에 있는 것만 받아들임)
+ */
+export function parsePicks(content) {
+  const text = String(content || '');
+  try {
+    const obj = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || '');
+    if (Array.isArray(obj.picks)) return obj.picks;
+  } catch { /* 끊긴 JSON → 아래에서 항목별로 */ }
+  return [...text.matchAll(/\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g)].map((m) => ({ id: m[1], reason: m[2] }));
 }
 
 const brief = (c) => ({ id: c.id, title: c.title, artist: c.artist, seconds: Math.round(c.durationMs / 1000), genres: c.genres, tags: c.tags });
@@ -167,13 +180,12 @@ export async function discover(text, exclude) {
       }
       continue;
     }
-    trace.push({ kind: 'raw', content: String(msg.content || '').slice(0, 600), toolCalls: (msg.tool_calls || []).length }); // TEMP-DIAG
     // 최종 선택: 후보에 있는 서로 다른 곡만, 실제 재생 확인을 통과한 곡만
-    let picks = [];
-    try { picks = JSON.parse(String(msg.content || '').match(/\{[\s\S]*\}/)?.[0] || '{}').picks || []; } catch { picks = []; }
+    const picks = parsePicks(msg.content);
     const chosen = [];
     for (const p of picks) {
-      const c = pool.get(p?.id);
+      const id = String(p?.id || '');
+      const c = pool.get(id) || pool.get(`ov:${id}`);
       if (!c || chosen.some((x) => x.id === c.id || norm(x.title) === norm(c.title))) continue;
       if (!(await isPlayable(c.audioUrl))) { trace.push({ kind: 'unplayable', id: c.id }); continue; }
       chosen.push({ ...c, reason: String(p.reason || '').slice(0, 120) });

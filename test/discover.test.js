@@ -37,6 +37,14 @@ test('다른 곡 보기: 이번에 보여 준 곡과 라디오에 있는 곡은 
   assert.ok(second.picks.every((p) => !exclude.has(p.id)));
 });
 
+test('AI 답 읽기: 설명·코드 블록이 붙거나 끊긴 답에서도 완성된 항목만 살림', async () => {
+  const { parsePicks } = await import('../server/discover.js');
+  assert.deepEqual(parsePicks('{"picks":[{"id":"ov:a","reason":"좋아요"}]}'), [{ id: 'ov:a', reason: '좋아요' }]);
+  const cut = parsePicks('설명\n```json\n{"picks":[{"id":"ov:a","reason":"하나"},{"id":"ov:b","reason":"둘"},{"id":"ov:c","reason":"끊');
+  assert.deepEqual(cut.map((p) => p.id), ['ov:a', 'ov:b']);
+  assert.deepEqual(parsePicks('잘 모르겠어요'), []);
+});
+
 test('찾지 못하면 none, 검색 실패·키 없음은 상태로 알림', async () => {
   assert.equal((await discover('없는 장르 zzz', new Set())).status, 'none');
   config.openrouter.apiKey = '';
