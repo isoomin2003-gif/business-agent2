@@ -2,7 +2,7 @@
 //
 //  1) AI(OpenRouter 도구 호출)가 요청을 영어 검색어로 바꿔 search_music 도구를 호출
 //  2) 서버가 Openverse 음원 검색 API로 실제 곡을 찾음
-//     - 라이선스: 공개 웹 라디오에서 조건 없이(또는 저작자 표시만으로) 재생할 수 있는 CC0·PDM·CC BY·CC BY-SA만 (NC·ND 제외)
+//     - 라이선스: 기본은 CC0·퍼블릭 도메인(PDM)만. DISCOVER_LICENSES로 CC BY·CC BY-SA까지 넓힐 수 있음 (NC·ND는 항상 제외)
 //     - 45초~8분, https 오디오 파일만, 이미 라디오에 있거나 재생·대기 중이거나 이번에 보여 준 곡은 제외
 //  3) AI가 후보의 장르·태그(악기·분위기)를 보고 서로 다른 곡 최대 3개를 고르고 이유 한 줄을 씀
 //     - 고른 id가 후보에 없으면 버림(곡명·주소를 지어낼 수 없음). 후보가 없으면 검색어를 바꿔 1회 더
@@ -12,7 +12,15 @@ import { TRACKS } from './tracks.js';
 
 const OPENVERSE = (process.env.OPENVERSE_BASE_URL || 'https://api.openverse.org/v1').replace(/\/$/, '');
 const OPENVERSE_TOKEN = process.env.OPENVERSE_TOKEN || '';
-export const LICENSES = ['cc0', 'pdm', 'by', 'by-sa'];
+// 추천에 쓰는 라이선스. 기본은 저작권 조건이 없는 CC0·퍼블릭 도메인(PDM)만.
+// 저작자 표시만 하면 되는 곡까지 넓히려면 환경변수 DISCOVER_LICENSES=cc0,pdm,by,by-sa (NC·ND는 어떤 경우에도 제외)
+const ALLOWED = ['cc0', 'pdm', 'by', 'by-sa'];
+export const LICENSES = (process.env.DISCOVER_LICENSES || 'cc0,pdm').split(',').map((x) => x.trim().toLowerCase()).filter((x) => ALLOWED.includes(x));
+if (!LICENSES.length) LICENSES.push('cc0', 'pdm');
+const PD_ONLY = LICENSES.every((l) => l === 'cc0' || l === 'pdm');
+// 음악이 아닌 녹음(효과음·현장 녹음·발음 녹음 등)으로 보이는 태그·제목
+const MUSIC_WORDS = /music|song|melod|loop|beat|bpm|guitar|piano|synth|chord|instrument|strings|violin|cello|flute|harp|jazz|lo-?fi|chiptune|8-?bit|orchestra|ambient|soundtrack|band|tune|groove|keys|ukulele|bass/i;
+const NOT_MUSIC = /\b(sfx|sound ?effect|field[- ]?recording|foley|ambience|ambiance|noise|voice|speech|birds?|dogs?|bark(ing)?|crickets|traffic|footsteps|cityscape|soundscape|pronunciation|spoken|tuning|LL-Q\d+)\b/i;
 export const MAX_PICKS = 3;
 const MAX_SEARCHES = 2;
 const MIN_MS = 45_000, MAX_MS = 480_000;
@@ -27,9 +35,16 @@ function toCandidate(r) {
   if (!LICENSES.includes(r.license)) return null;
   if (!r.url || !(/^https:\/\//.test(r.url) || /^http:\/\/127\.0\.0\.1:/.test(r.url)) || !r.duration || r.duration < MIN_MS || r.duration > MAX_MS) return null;
   if (BASE_KEYS.has(`${norm(r.title)}|${norm(r.creator)}`)) return null; // 기본 수록곡과 같은 곡
+  if (/\.(mid|midi)(\?|$)/i.test(r.url) || /midi/i.test(r.filetype || '')) return null; // 악보 파일(MIDI)은 브라우저에서 재생 안 됨
+  const words = `${r.title} ${(r.tags || []).map((t) => t.name).join(' ')}`;
+  if (NOT_MUSIC.test(words)) return null;
+  // Freesound는 효과음·현장 녹음이 많아 음악임을 알 수 있는 태그·제목이 있는 것만
+  if ((r.source || r.provider) === 'freesound' && !MUSIC_WORDS.test(words)) return null;
+  // Wikimedia의 ogg·wav 등은 Wikimedia가 만들어 둔 MP3 변환본을 먼저 씀 (아이폰 등 ogg를 못 트는 브라우저 대비)
+  const wm = r.url.match(/^(https:\/\/upload\.wikimedia\.org\/wikipedia\/commons)\/(\w)\/(\w\w)\/([^/?]+\.(ogg|oga|wav|flac|opus|webm))$/i);
   return {
     id: `ov:${r.id}`, source: r.source || r.provider, title: decode(r.title), artist: decode(r.creator) || '(작자 미상)',
-    audioUrl: r.url, sourceUrl: r.foreign_landing_url || '', license: r.license, licenseVersion: r.license_version || '',
+    audioUrl: wm ? `${wm[1]}/transcoded/${wm[2]}/${wm[3]}/${wm[4]}/${wm[4]}.mp3` : r.url, altUrl: wm ? r.url : '', sourceUrl: r.foreign_landing_url || '', license: r.license, licenseVersion: r.license_version || '',
     licenseUrl: r.license_url || '', attribution: decode(r.attribution), durationMs: r.duration,
     genres: (r.genres || []).slice(0, 4), tags: (r.tags || []).map((t) => t.name).filter(Boolean).slice(0, 10),
   };
@@ -40,7 +55,9 @@ const cache = new Map(); // 검색어 → { at, results } (10분) — 익명 이
 async function openverseQuery(q) {
   const hit = cache.get(q);
   if (hit && Date.now() - hit.at < 10 * 60_000) return hit.results;
-  const url = `${OPENVERSE}/audio/?${new URLSearchParams({ q: q.slice(0, 80), category: 'music', license: LICENSES.join(','), page_size: '20', mature: 'false' })}`;
+    // CC0·PD 음원은 Jamendo에 없고 대부분 Wikimedia(옛 클래식 녹음 등)·Freesound에 있으며, 이 둘은 '음악' 분류가 비어 있어 분류 대신 출처로 찾음
+  const params = PD_ONLY ? { source: 'wikimedia_audio,freesound' } : { category: 'music' };
+  const url = `${OPENVERSE}/audio/?${new URLSearchParams({ q: q.slice(0, 80), ...params, license: LICENSES.join(','), page_size: '20', mature: 'false' })}`;
   const res = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': 'HaruHanjang/1.0 (class project radio)', ...(OPENVERSE_TOKEN ? { Authorization: `Bearer ${OPENVERSE_TOKEN}` } : {}) } });
   if (res.status === 429) throw Object.assign(new Error('음악 검색 요청이 너무 많아요.'), { code: 'rate' });
   if (!res.ok) throw Object.assign(new Error(`음악 검색 실패 (HTTP ${res.status})`), { code: 'search' });
@@ -81,7 +98,7 @@ export async function isPlayable(audioUrl) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetch(audioUrl, { headers: { Range: 'bytes=0-2047' }, redirect: 'follow', signal: ctrl.signal });
+    const res = await fetch(audioUrl, { headers: { Range: 'bytes=0-2047', 'User-Agent': 'HaruHanjang/1.0 (class project web radio)' }, redirect: 'follow', signal: ctrl.signal });
     const type = res.headers.get('content-type') || '';
     await res.body?.cancel().catch(() => {});
     return (res.status === 206 || res.status === 200) && /audio|ogg|mpeg|octet-stream/.test(type);
@@ -187,7 +204,10 @@ export async function discover(text, exclude) {
       const id = String(p?.id || '');
       const c = pool.get(id) || pool.get(`ov:${id}`);
       if (!c || chosen.some((x) => x.id === c.id || norm(x.title) === norm(c.title))) continue;
-      if (!(await isPlayable(c.audioUrl))) { trace.push({ kind: 'unplayable', id: c.id }); continue; }
+      if (!(await isPlayable(c.audioUrl))) {
+        if (c.altUrl && (await isPlayable(c.altUrl))) c.audioUrl = c.altUrl;
+        else { trace.push({ kind: 'unplayable', id: c.id }); continue; }
+      }
       chosen.push({ ...c, reason: String(p.reason || '').slice(0, 120) });
       if (chosen.length >= MAX_PICKS) break;
     }

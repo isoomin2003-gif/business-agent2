@@ -9,8 +9,10 @@ export function startMockOpenverse(port = 0) {
     { id: 'g1', title: 'Rainy Window Guitar', creator: 'Ana', license: 'by', license_version: '4.0', duration: 150 * SECOND, genres: ['acoustic'], tags: ['guitar', 'calm', 'rain'] },
     { id: 'g2', title: 'Night Drizzle', creator: 'Bo', license: 'cc0', license_version: '1.0', duration: 120 * SECOND, genres: ['ambient'], tags: ['guitar', 'night', 'soft'] },
     { id: 'g3', title: 'Puddle Steps', creator: 'Cy', license: 'by-sa', license_version: '3.0', duration: 200 * SECOND, genres: ['folk'], tags: ['acoustic guitar', 'gentle'] },
-    { id: 'g4', title: 'Storm Lullaby', creator: 'Di', license: 'by', license_version: '3.0', duration: 180 * SECOND, genres: ['instrumental'], tags: ['guitar', 'slow'] },
-    { id: 'g5', title: 'Dripping Strings', creator: 'Ed', license: 'by', license_version: '3.0', duration: 170 * SECOND, genres: ['acoustic'], tags: ['guitar'] },
+    { id: 'g4', title: 'Storm Lullaby', creator: 'Di', license: 'pdm', license_version: '1.0', duration: 180 * SECOND, genres: ['instrumental'], tags: ['guitar', 'slow'] },
+    { id: 'g5', title: 'Dripping Strings', creator: 'Ed', license: 'cc0', license_version: '1.0', duration: 170 * SECOND, genres: ['acoustic'], tags: ['guitar'] },
+    { id: 'g6', title: 'Quiet Puddle', creator: 'Jo', license: 'cc0', license_version: '1.0', duration: 160 * SECOND, genres: ['ambient'], tags: ['guitar', 'rain', 'calm'] },
+    { id: 'g7', title: 'Window Fog', creator: 'Ki', license: 'cc0', license_version: '1.0', duration: 130 * SECOND, genres: ['acoustic'], tags: ['guitar', 'night'] },
     { id: 'nc1', title: 'NC Only Song', creator: 'Fi', license: 'by-nc', license_version: '3.0', duration: 150 * SECOND, genres: [], tags: ['guitar'] }, // 비영리 조건 → 제외
     { id: 'short', title: 'Tiny Jingle', creator: 'Gu', license: 'cc0', duration: 8 * SECOND, genres: [], tags: [] }, // 너무 짧음 → 제외
     { id: 'dead', title: 'Broken Link Ballad', creator: 'Ha', license: 'by', license_version: '4.0', duration: 140 * SECOND, genres: ['acoustic'], tags: ['guitar', 'rain'] }, // 404 → 재생 확인에서 제외

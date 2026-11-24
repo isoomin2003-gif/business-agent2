@@ -26,8 +26,9 @@ test('추천: 조건에 맞고 실제 재생되는 서로 다른 곡 최대 3개
   assert.ok(r.picks.length >= 1 && r.picks.length <= 3);
   const ids = r.picks.map((p) => p.id);
   assert.equal(new Set(ids).size, ids.length);
-  for (const bad of ['ov:made-up', 'ov:nc1', 'ov:short', 'ov:dead', 'ov:base', 'ov:g1dup']) assert.ok(!ids.includes(bad), bad);
-  for (const p of r.picks) { assert.ok(['cc0', 'pdm', 'by', 'by-sa'].includes(p.license)); assert.ok(p.reason); assert.ok(p.attribution); }
+  // 기본 설정: CC0·퍼블릭 도메인만 (CC BY 'g1', CC BY-SA 'g3'도 제외)
+  for (const bad of ['ov:made-up', 'ov:nc1', 'ov:short', 'ov:dead', 'ov:base', 'ov:g1dup', 'ov:g1', 'ov:g3']) assert.ok(!ids.includes(bad), bad);
+  for (const p of r.picks) { assert.ok(['cc0', 'pdm'].includes(p.license)); assert.ok(p.reason); }
 });
 
 test('다른 곡 보기: 이번에 보여 준 곡과 라디오에 있는 곡은 제외', async () => {

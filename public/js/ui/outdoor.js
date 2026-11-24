@@ -104,7 +104,7 @@ export async function openRadio({ getState, myUserId }) {
 
   // ── 음원 정보 ──
   const renderInfo = () => {
-    m.$('[data-pane="info"]').innerHTML = `<p class="muted" style="font-size:14px">★ 기본 방송과 선곡표는 제작자가 CC0으로 공개한 녹음이에요. 아래 ‘신청되어 추가된 곡’은 공개 라이선스(CC0·CC BY·CC BY-SA) 곡이고, 저작자 표시가 필요한 곡은 함께 표시해요.</p>
+    m.$('[data-pane="info"]').innerHTML = `<p class="muted" style="font-size:14px">★ 기본 방송과 선곡표는 제작자가 CC0으로 공개한 녹음이에요. 아래 ‘신청되어 추가된 곡’은 공개 라이선스 곡이에요(새 노래 추천은 지금 CC0·퍼블릭 도메인 곡만 찾아요). 저작자 표시가 필요한 곡은 함께 표시해요.</p>
       <table class="credits"><tr><th>곡</th><th>제작자</th><th>라이선스</th></tr>
       ${radioInfo.tracks.map((t) => `<tr><td>${t.base ? '★ ' : ''}<a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${esc(t.title)}</a><div class="muted" style="font-size:12px">${esc([t.genre, ...t.moods].join(' · '))}</div></td><td>${esc(t.artist)}</td>
         <td><a href="${esc(t.licenseUrl)}" target="_blank" rel="noopener">${esc(t.license)}</a></td></tr>`).join('')}</table>
