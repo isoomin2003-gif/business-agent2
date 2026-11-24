@@ -116,7 +116,7 @@ export async function openRadio({ getState, myUserId }) {
         else { btn.disabled = false; btn.textContent = '신청하기'; m.$('#dj-status').textContent = res?.message || '신청하지 못했어요.'; m.$('#dj-status').className = 'status err'; }
       });
     } else if (r.status === 'none') {
-      djOut.innerHTML = `<div class="result" data-status="none"><p class="answer">라디오 곡 중에서 딱 맞는 곡을 찾지 못했어요.</p><p class="muted hint-line">분위기나 상황을 조금 다르게 말해 주세요. 예) 차분한, 밝은, 피아노, 비 오는 밤</p></div>${djTrace(r)}`;
+      djOut.innerHTML = `<div class="result" data-status="none"><p class="answer">라디오 곡 중에서 딱 맞는 곡을 찾지 못했어요.</p><p class="muted hint-line">분위기나 상황을 조금 다르게 말해 주세요. 예) 차분한, 밝은, 피아노, 기타, 밤, 겨울</p></div>${djTrace(r)}`;
     } else {
       djOut.innerHTML = `<div class="result" data-status="error"><p class="answer">지금은 AI DJ에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.</p><button class="btn btn-small" id="dj-retry">다시 시도</button></div>${djTrace(r)}`;
       m.$('#dj-retry').addEventListener('click', recommendNow);
