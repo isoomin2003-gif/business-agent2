@@ -1,7 +1,7 @@
 import { api, store, koDate } from './api.js';
 import * as net from './net.js';
 import { Stage } from './stage.js';
-import { PLACES, findPath, pathPoints, pathDuration } from './shared/places.js';
+import { PLACES, routeTo, pathDuration } from './shared/places.js';
 import { room } from './scenes/room.js';
 import { rooftop } from './scenes/rooftop.js';
 import { park } from './scenes/park.js';
@@ -16,9 +16,9 @@ import * as amb from './audio/ambience.js';
 
 const SCENES = { room, rooftop, park };
 const HINTS = {
-  room: '책상에서 다이어리 쓰기 · 책장에서 지난 기록과 기억 찾기 · 문으로 밖에 나가기',
-  rooftop: '빛나는 ◇ 지점이나 벤치의 빈자리를 눌러 이동해요. 라디오를 누르면 지금 곡·신청·음원 정보를 볼 수 있어요.',
-  park: '말없이 함께 쉬는 곳이에요. 벤치에 앉으면 풀벌레와 바람 소리가 들려요. 소원 나무를 눌러 소원을 읽고 걸 수 있어요.',
+  room: '빈 바닥을 누르면 그곳으로 걸어가요 · 책상: 다이어리 쓰기 · 책장: 지난 기록과 기억 찾기 · 문: 밖으로 나가기',
+  rooftop: '바닥을 누르면 그곳으로 걸어가고, 벤치의 빈자리를 누르면 앉아요. 라디오를 누르면 지금 곡·신청·음원 정보를 볼 수 있어요.',
+  park: '산책로나 잔디를 누르면 걸어가요. 벤치에 앉으면 풀벌레와 바람 소리가 들려요. 소원 나무를 눌러 소원을 읽고 걸 수 있어요.',
 };
 const $ = (s) => document.querySelector(s);
 
@@ -27,7 +27,7 @@ let stage = null;
 let place = 'room';
 let counts = { rooftop: 0, park: 0 };
 let mySid = null;
-let roomMe = { node: 'door', seat: null };
+let roomSeat = null; // 방에서 앉아 있는(또는 앉으러 가는) 자리
 let moveToken = 0;
 let starBtn = null;
 let firstHint = null;
@@ -98,9 +98,9 @@ function setHud() {
 // ───────────── 내 방 (혼자만의 공간, 서버 접속자 수에 포함되지 않음) ─────────────
 async function enterRoom(from = 'door') {
   place = 'room';
-  roomMe = { node: from, seat: null };
+  roomSeat = null;
   stage.setScene(room, PLACES.room, 'room', {});
-  const n = PLACES.room.nodes[from];
+  const n = PLACES.room.targets[from] || PLACES.room.spawn;
   stage.upsert('me', { nickname: user.nickname, color: user.color, me: true, points: [{ x: n.x, y: n.y }], startAt: net.now(), seat: null });
   setHud();
   refreshRoomBooks();
@@ -118,21 +118,26 @@ async function refreshRoomBooks() {
   } catch { /* */ }
 }
 
-/** 방 안에서 정해진 경로로 걷기. 도착하면 true, 다른 이동으로 취소되면 false */
-function moveLocal(node, seat = null) {
+/**
+ * 방 안에서 목표 위치(또는 자리)까지 걷기. 가구는 돌아가고, 걷는 도중 다시 누르면 지금 위치에서 방향을 바꿉니다.
+ * 도착하면 true, 다른 이동으로 취소되면 false
+ */
+function walkLocal(target, seat = null) {
   const token = ++moveToken;
   const e = stage.entities.get('me');
   const cur = stage.pos(e);
-  if (roomMe.node === node && roomMe.seat === seat) return Promise.resolve(true);
-  const path = findPath('room', roomMe.node, node) || [node];
-  const pts = [{ x: cur.x, y: cur.y }, ...pathPoints('room', path, seat)];
-  stage.upsert('me', { points: pts, startAt: net.now(), seat });
-  roomMe = { node, seat };
+  if (seat && roomSeat === seat && !cur.moving) return Promise.resolve(true); // 이미 앉아 있음
+  const seatedNow = roomSeat && !cur.moving ? roomSeat : null;
+  const pts = routeTo('room', cur, target, { seatNow: seatedNow, seatTo: seat });
+  if (!pts) return Promise.resolve(false);
+  stage.upsert('me', { points: pts.length > 1 ? pts : [pts[0], pts[0]], startAt: net.now(), seat });
+  roomSeat = seat;
   return new Promise((r) => setTimeout(() => r(token === moveToken), pathDuration(pts) + 60));
 }
+const sitAtDesk = () => walkLocal(PLACES.room.seats.chair.approach, 'chair');
 
 async function openMonth(month, entryId) {
-  if (place === 'room' && !(await moveLocal('desk', 'chair'))) return;
+  if (place === 'room' && !(await sitAtDesk())) return;
   try {
     const { entries } = await api(`/api/diary/month/${month}`);
     if (!entries.length) return toast('이 달에는 기록이 없어요.');
@@ -150,17 +155,17 @@ function openExample(examples, id) {
 async function onRoomHotspot(id) {
   if (id === 'desk') {
     firstHint?.remove(); firstHint = null;
-    if (await moveLocal('desk', 'chair')) openDiary({ onViewInShelf: openMonth });
+    if (await sitAtDesk()) openDiary({ onViewInShelf: openMonth });
   } else if (id === 'shelf') {
-    if (await moveLocal('shelf')) openBookshelf({ onOpenMonth: openMonth, onOpenExample: openExample });
+    if (await walkLocal(PLACES.room.targets.shelf)) openBookshelf({ onOpenMonth: openMonth, onOpenExample: openExample });
   } else if (id === 'door') {
-    if (await moveLocal('door')) openPlaces({ counts, onChoose: goOutside });
+    if (await walkLocal(PLACES.room.targets.door)) openPlaces({ counts, onChoose: goOutside });
   }
 }
 
 // ───────────── 야외 (옥상 / 공원) ─────────────
 const toEntity = (p) => ({
-  nickname: p.nickname, color: p.color, me: p.sid === mySid, points: p.points, startAt: p.startAt, seat: p.seat, node: p.node,
+  nickname: p.nickname, color: p.color, me: p.sid === mySid, points: p.points, startAt: p.startAt, seat: p.seat,
   wish: p.wish ? { wishId: p.wish.wishId, until: localTime(p.wish.until) } : null,
 });
 const localTime = (serverTs) => serverTs - (net.now() - Date.now());
@@ -203,8 +208,8 @@ async function goHome() {
 
 function onOutdoorHotspot(id) {
   if (id === 'exit') return goHome();
-  if (id === 'radio') { net.emit('move', { node: 'radio' }); openRadio({ getState: radio.getState, myUserId: user.id }); }
-  if (id === 'tree') { net.emit('move', { node: 'tree' }); openTree({ onPosted: (n) => place === 'park' && stage.renderBackground({ treeCount: n }) }); }
+  if (id === 'radio') { net.emit('move', PLACES.rooftop.targets.radio); openRadio({ getState: radio.getState, myUserId: user.id }); }
+  if (id === 'tree') { net.emit('move', PLACES.park.targets.tree); openTree({ onPosted: (n) => place === 'park' && stage.renderBackground({ treeCount: n }) }); }
 }
 
 // ───────────── 별똥별 ─────────────
@@ -230,7 +235,12 @@ function onStar(ev) {
 // ───────────── 연결 ─────────────
 function bindStage() {
   stage.on('hotspot', (id) => (place === 'room' ? onRoomHotspot(id) : onOutdoorHotspot(id)));
-  stage.on('node', (id) => place !== 'room' && net.emit('move', { node: id }));
+  // 빈 바닥: 방에서는 혼자 걷고, 옥상·공원에서는 서버가 경로를 정해 모든 화면에 같은 움직임을 보냄
+  stage.on('floor', async (_id, hit) => {
+    if (place === 'room') return walkLocal({ x: hit.x, y: hit.y });
+    const r = await net.emit('move', { x: hit.x, y: hit.y });
+    if (r && !r.ok && r.message) toast(r.message);
+  });
   stage.on('seat', async (id) => {
     if (place === 'room') return;
     const r = await net.emit('sit', { seat: id });
@@ -243,7 +253,7 @@ function bindSocket() {
   net.on('counts', (c) => { counts = c; });
   net.on('player:join', (p) => { if (place !== 'room') stage.upsert(p.sid, toEntity(p)); });
   net.on('player:leave', ({ sid }) => { if (place !== 'room') stage.remove(sid); });
-  net.on('player:move', (m) => { if (place !== 'room' && stage.entities.has(m.sid)) stage.upsert(m.sid, { points: m.points, startAt: m.startAt, seat: m.seat, node: m.node }); });
+  net.on('player:move', (m) => { if (place !== 'room' && stage.entities.has(m.sid)) stage.upsert(m.sid, { points: m.points, startAt: m.startAt, seat: m.seat }); });
   net.on('chat', ({ sid, text }) => { if (place === 'rooftop') stage.say(sid, text); });
   net.on('wish:float', ({ sid, wishId, until }) => { const e = stage.entities.get(sid); if (e && place !== 'room') e.wish = { wishId, until: localTime(until) }; });
   net.on('star', onStar);
@@ -298,7 +308,7 @@ function tickSounds() {
 // 디버그/자동 테스트용 읽기 전용 상태
 window.__haru = {
   get place() { return place; }, get mySid() { return mySid; }, get user() { return user; },
-  entities: () => stage ? [...stage.entities.values()].map((e) => ({ id: e.id, nickname: e.nickname, seat: e.seat, me: e.me, bubble: e.bubble?.el.textContent || null, wish: !!e.wish, pos: stage.pos(e) })) : [],
+  entities: () => stage ? [...stage.entities.values()].map((e) => ({ id: e.id, nickname: e.nickname, seat: e.seat, me: e.me, bubble: e.bubble?.el.textContent || null, wish: !!e.wish, pos: stage.pos(e), points: e.points, startAt: e.startAt })) : [],
   radio: () => { const a = document.getElementById('radio-audio'); return { src: a.src, paused: a.paused, muted: a.muted, time: a.currentTime, state: radio.getState() }; },
   ambience: () => amb.isNightOn(),
   get star() { return stage?.star; },

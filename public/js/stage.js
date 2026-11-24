@@ -1,6 +1,6 @@
 // 캔버스 렌더링, 아바타/말풍선, 클릭(터치) 판정을 담당합니다.
 import { drawAvatar, rect, glow, rng } from './render/pixel.js';
-import { positionAt } from './shared/places.js';
+import { positionAt, snapWalkable } from './shared/places.js';
 import { now } from './net.js';
 
 const W = 320, H = 180;
@@ -143,16 +143,24 @@ export class Stage {
     c.fillStyle = '#fff'; c.fillRect(Math.round(x), Math.round(y), 1, 1);
   }
 
+  /** 바닥을 누른 곳에 잠깐 보이는 표시 (고정된 이동 지점 표시는 없음) */
+  markClick(x, y) { this.clickMark = { x, y, at: performance.now() }; }
+
   drawMarkers(c, t) {
-    if (!this.place || this.placeId === 'room') return;
-    const pulse = (Math.sin(t / 400) + 1) / 2;
-    for (const [id, n] of Object.entries(this.place.nodes)) {
-      const hot = this.hover?.type === 'node' && this.hover.id === id;
-      c.globalAlpha = hot ? 1 : 0.35 + pulse * 0.3;
-      const col = hot ? '#ffe39a' : '#cfe9ff';
-      rect(c, n.x - 1, n.y - 3, 2, 1, col); rect(c, n.x - 3, n.y - 1, 1, 2, col); rect(c, n.x + 2, n.y - 1, 1, 2, col); rect(c, n.x - 1, n.y + 2, 2, 1, col);
-      c.globalAlpha = 1;
+    if (!this.place) return;
+    const m = this.clickMark;
+    if (m) {
+      const k = (performance.now() - m.at) / 600;
+      if (k >= 1) this.clickMark = null;
+      else {
+        const r = Math.round(2 + k * 4);
+        c.globalAlpha = 1 - k;
+        rect(c, m.x - r, m.y, 1, 1, '#ffe39a'); rect(c, m.x + r, m.y, 1, 1, '#ffe39a');
+        rect(c, m.x, m.y - Math.ceil(r / 2), 1, 1, '#ffe39a'); rect(c, m.x, m.y + Math.ceil(r / 2), 1, 1, '#ffe39a');
+        c.globalAlpha = 1;
+      }
     }
+    if (this.placeId === 'room') return;
     for (const [id, s] of Object.entries(this.place.seats)) {
       const taken = this.seatsTaken.has(id);
       const hot = this.hover?.type === 'seat' && this.hover.id === id;
@@ -224,12 +232,14 @@ export class Stage {
           return { type: 'seat', id, label: mine ? '내 자리' : holder ? '누군가 앉아 있어요' : '여기 앉기' };
         }
       }
-      for (const [id, n] of Object.entries(this.place.nodes)) {
-        if (Math.hypot(x - n.x, y - n.y) <= 9 + pad) return { type: 'node', id, label: `여기로 걷기 · ${n.label || ''}` };
-      }
     }
     for (const h of this.scene?.hotspots || []) {
       if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return { type: 'hotspot', id: h.id, label: h.label };
+    }
+    // 빈 바닥: 걸을 수 있는 곳(또는 아주 가까운 곳)을 누르면 그 위치로 걷기
+    if (this.placeId) {
+      const f = snapWalkable(this.placeId, { x, y }, touch ? 16 : 12);
+      if (f) return { type: 'floor', id: null, x: f.x, y: f.y, label: null };
     }
     return null;
   }
@@ -239,7 +249,7 @@ export class Stage {
     const hit = this.hitTest(p.x, p.y);
     this.hover = hit;
     this.canvas.classList.toggle('pointer', !!hit);
-    if (hit) {
+    if (hit?.label) {
       this.tooltip.hidden = false; this.tooltip.textContent = hit.label;
       this.tooltip.style.left = `${p.px}px`; this.tooltip.style.top = `${p.py}px`;
     } else this.tooltip.hidden = true;
@@ -250,7 +260,8 @@ export class Stage {
     const p = this.toLocal(e);
     const hit = this.hitTest(p.x, p.y, touch);
     if (!hit) return this.handlers.empty?.(p);
-    if (touch) {
+    if (hit.type === 'floor') this.markClick(hit.x, hit.y);
+    if (touch && hit.label) {
       this.tooltip.hidden = false; this.tooltip.textContent = hit.label;
       this.tooltip.style.left = `${p.px}px`; this.tooltip.style.top = `${p.py}px`;
       clearTimeout(this._tt); this._tt = setTimeout(() => { this.tooltip.hidden = true; }, 900);

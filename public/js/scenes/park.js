@@ -57,7 +57,8 @@ export const park = {
   },
   props: [],
   hotspots: [
-    { id: 'tree', x: 40, y: 26, w: 84, h: 128, label: '소원 나무' },
+    { id: 'tree', x: 40, y: 24, w: 86, h: 76, label: '소원 나무' }, // 나뭇잎
+    { id: 'tree', x: 64, y: 100, w: 34, h: 56, label: '소원 나무' }, // 줄기 (주변 잔디는 걸어갈 수 있음)
     { id: 'exit', x: 296, y: 120, w: 24, h: 46, label: '내 방으로' },
   ],
 };

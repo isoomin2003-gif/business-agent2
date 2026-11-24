@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Server } from 'socket.io';
-import { PLACES, OUTDOOR, findPath, pathPoints, positionAt } from '../public/js/shared/places.js';
+import { PLACES, OUTDOOR, routeTo, positionAt } from '../public/js/shared/places.js';
 import { COOKIE, parseCookieHeader, userFromToken } from './auth.js';
 import { createRadio } from './radio.js';
 import { config } from './config.js';
@@ -26,7 +26,7 @@ export function isUserIn(userId, place) {
 
 export function getStar(id) { return stars.get(id); }
 
-const serialize = (p) => ({ sid: p.sid, userId: p.userId, nickname: p.nickname, color: p.color, node: p.node, seat: p.seat, points: p.points, startAt: p.startAt, wish: p.wish && p.wish.until > Date.now() ? p.wish : null });
+const serialize = (p) => ({ sid: p.sid, userId: p.userId, nickname: p.nickname, color: p.color, seat: p.seat, points: p.points, startAt: p.startAt, wish: p.wish && p.wish.until > Date.now() ? p.wish : null });
 
 function broadcastCounts() { io.emit('counts', counts()); }
 
@@ -43,19 +43,22 @@ function leavePlace(socket) {
   broadcastCounts();
 }
 
-function setMovement(placeId, p, toNode, seatId) {
-  // 정해진 경로(노드 그래프)를 따라 이동. 현재 화면상의 위치에서 출발해 자연스럽게 이어집니다.
-  const path = findPath(placeId, p.node, toNode);
-  if (!path) return false;
+/**
+ * 자유 이동: 지금 화면에 보이는 위치(걷는 중이면 그 중간 지점)에서 목표까지 장애물을 돌아가는 경로를 만들어
+ * 같은 장소의 모든 화면에 같은 경로·같은 출발 시각을 보냅니다. 걷는 도중 새로 누르면 그 자리에서 방향을 바꿉니다.
+ */
+function setMovement(placeId, p, target, seatId) {
+  const now = Date.now();
+  const cur = positionAt(p.points, p.startAt, now) || { x: PLACES[placeId].spawn.x, y: PLACES[placeId].spawn.y, moving: false };
+  const seatedNow = p.seat && !cur.moving ? p.seat : null; // 자리에 도착해 앉아 있는 경우에만 '일어서기'부터
+  const route = routeTo(placeId, cur, target, { seatNow: seatedNow, seatTo: seatId });
+  if (!route) return false;
   if (p.seat) places[placeId].seats.delete(p.seat);
-  const cur = positionAt(p.points, p.startAt, Date.now());
-  const start = cur ? [{ x: Math.round(cur.x), y: Math.round(cur.y) }] : [];
-  p.points = [...start, ...pathPoints(placeId, path, seatId)];
-  p.startAt = Date.now() + 80;
-  p.node = toNode;
+  p.points = route.length > 1 ? route : [route[0], route[0]];
+  p.startAt = now + 60;
   p.seat = seatId || null;
   if (seatId) places[placeId].seats.set(seatId, p.sid);
-  io.to(placeId).emit('player:move', { sid: p.sid, points: p.points, startAt: p.startAt, node: p.node, seat: p.seat });
+  io.to(placeId).emit('player:move', { sid: p.sid, points: p.points, startAt: p.startAt, seat: p.seat });
   return true;
 }
 
@@ -132,8 +135,8 @@ export function setupRealtime(server) {
       if (!OUTDOOR.includes(placeId)) return cb?.({ ok: false });
       leavePlace(socket);
       const def = PLACES[placeId];
-      const spawn = def.nodes[def.spawn];
-      const p = { sid: socket.id, userId: user.id, nickname: user.nickname, color: user.color, node: def.spawn, seat: null, points: [{ x: spawn.x + 16, y: spawn.y }, { x: spawn.x, y: spawn.y }], startAt: Date.now(), wish: null };
+      const spawn = def.spawn;
+      const p = { sid: socket.id, userId: user.id, nickname: user.nickname, color: user.color, seat: null, points: [{ x: spawn.x, y: spawn.y - 4 }, { x: spawn.x, y: spawn.y }], startAt: Date.now(), wish: null };
       places[placeId].players.set(socket.id, p);
       socket.join(placeId);
       socket.data.place = placeId;
@@ -148,11 +151,17 @@ export function setupRealtime(server) {
 
     socket.on('leave', (_data, cb) => { leavePlace(socket); (typeof _data === 'function' ? _data : cb)?.({ ok: true }); });
 
+    let moveTimes = [];
     socket.on('move', (data, cb) => {
       const placeId = socket.data.place;
       const p = places[placeId]?.players.get(socket.id);
-      if (!p || !PLACES[placeId].nodes[data?.node]) return cb?.({ ok: false });
-      cb?.({ ok: setMovement(placeId, p, data.node, null) });
+      const x = Number(data?.x), y = Number(data?.y);
+      if (!p || !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 320 || y < 0 || y > 180) return cb?.({ ok: false });
+      const now = Date.now();
+      moveTimes = moveTimes.filter((t) => now - t < 1000);
+      if (moveTimes.length >= 8) return cb?.({ ok: false, message: '조금 천천히 눌러 주세요.' });
+      moveTimes.push(now);
+      cb?.({ ok: setMovement(placeId, p, { x, y }, null) });
     });
 
     socket.on('sit', (data, cb) => {
@@ -163,7 +172,7 @@ export function setupRealtime(server) {
       const holder = places[placeId].seats.get(data.seat);
       if (holder && holder !== socket.id) return cb?.({ ok: false, message: '방금 다른 분이 앉은 자리예요. 옆자리를 골라 보세요.' });
       if (holder === socket.id) return cb?.({ ok: true });
-      cb?.({ ok: setMovement(placeId, p, seat.node, data.seat) });
+      cb?.({ ok: setMovement(placeId, p, seat.approach, data.seat) });
     });
 
     socket.on('chat', (data, cb) => {
