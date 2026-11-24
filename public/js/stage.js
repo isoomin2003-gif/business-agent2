@@ -190,6 +190,9 @@ export class Stage {
       const footY = seated ? p.y + 2 : p.y;
       e.tag.style.left = `${Math.min(Math.max(p.x * k, 50), 320 * k - 50)}px`;
       e.tag.style.top = `${(footY + 2) * k}px`;
+      // 같은 벤치의 이웃 좌석끼리 이름표가 겹치지 않도록 짝수 좌석은 한 줄 아래로
+      const lower = seated && Number(String(e.seat).replace(/\D/g, '')) % 2 === 0;
+      e.tag.style.transform = lower ? 'translate(-50%, 115%)' : 'translate(-50%, 0)';
       if (e.bubble) {
         const headTop = footY - (seated ? 15 : 18) - (e.wish && e.wish.until > Date.now() ? 12 : 2);
         e.bubble.el.style.left = `${Math.min(Math.max(p.x * k, 70), 320 * k - 70)}px`;

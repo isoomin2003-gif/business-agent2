@@ -1,5 +1,5 @@
 // 서버와 브라우저가 함께 사용하는 장소 정의 (좌표는 320x180 픽셀 캔버스 기준)
-export const WALK_SPEED = 46; // px/s
+export const WALK_SPEED = 60; // px/s
 
 export const PLACES = {
   room: {
