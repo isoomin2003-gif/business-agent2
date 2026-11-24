@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>시연 도구 · 하루 한 장</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body { padding: 24px 16px; }
+    .wrap { max-width: 560px; margin: 0 auto; }
+    .card { background: var(--panel); border: 3px solid #0e0a14; border-radius: 8px; padding: 18px; margin-bottom: 16px; }
+    input { width: 100%; padding: 10px; border: 2px solid #0e0a14; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>발표 시연 도구</h1>
+    <p class="muted">서버 환경변수 <code>ADMIN_KEY</code>를 아는 발표자만 사용할 수 있어요. 일반 방문자 화면에는 이 기능이 없어요.</p>
+    <div class="card stack">
+      <label for="key"><b>시연 키</b> (이 탭에만 잠시 보관)</label>
+      <input id="key" type="password" autocomplete="off">
+      <button class="btn" id="check">키 확인</button>
+    </div>
+    <div class="card stack">
+      <h2 style="margin:0">🌠 별똥별 바로 띄우기</h2>
+      <p class="muted" style="margin:0">해당 장소에 있는 모든 사람에게 약 2.5초 뒤 같은 순간에 별똥별이 지나가요.</p>
+      <div class="row"><button class="btn btn-primary" data-star="rooftop">옥상에 별똥별</button><button class="btn btn-primary" data-star="park">공원에 별똥별</button></div>
+    </div>
+    <div class="card stack">
+      <h2 style="margin:0">📻 라디오 빨리 감기</h2>
+      <p class="muted" style="margin:0">신청곡 시연용: 지금 곡이 8초 뒤 끝나도록 앞당겨요. 이후 대기열의 신청곡이 모두에게 동시에 시작돼요.</p>
+      <button class="btn" id="ff">현재 곡 8초 뒤 종료</button>
+    </div>
+    <p id="out" class="status"></p>
+  </div>
+  <script>
+    const key = document.getElementById('key');
+    try { key.value = sessionStorage.getItem('haruAdminKey') || ''; } catch {}
+    const out = document.getElementById('out');
+    async function call(path, body) {
+      try { sessionStorage.setItem('haruAdminKey', key.value); } catch {}
+      const res = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key.value }, body: body ? JSON.stringify(body) : undefined });
+      const data = await res.json().catch(() => ({}));
+      out.textContent = res.ok ? `완료 (${new Date().toLocaleTimeString()})` : (data.message || `실패 ${res.status}`);
+      out.className = `status ${res.ok ? 'ok' : 'err'}`;
+    }
+    document.getElementById('check').onclick = () => call('/api/admin/check');
+    document.querySelectorAll('[data-star]').forEach((b) => (b.onclick = () => call('/api/admin/star', { place: b.dataset.star })));
+    document.getElementById('ff').onclick = () => call('/api/admin/radio/fast-forward', { secondsLeft: 8 });
+  </script>
+</body>
+</html>
