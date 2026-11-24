@@ -42,7 +42,11 @@ app.get('/api/places', (req, res) => res.json({ counts: counts() }));
 app.get('/api/radio/tracks', (req, res) => res.json({ tracks: TRACKS }));
 app.get('/api/samples', (req, res) => res.json({ samples: Object.entries(SAMPLE_VIDEOS).map(([id, s]) => ({ id, title: s.title, poster: s.poster })) }));
 // 어떤 저장 방식이 쓰이는지(값이나 주소는 노출하지 않음)
-app.get('/healthz', (req, res) => res.json({ ok: true, db: db.kind, storage: storage.kind }));
+const STARTED_AT = new Date().toISOString();
+app.get('/healthz', (req, res) => res.json({
+  ok: true, db: db.kind, storage: storage.kind, startedAt: STARTED_AT,
+  commit: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || undefined,
+}));
 
 app.use('/api', diaryRouter);
 app.use('/api', memoryRouter);

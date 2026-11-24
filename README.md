@@ -4,7 +4,7 @@
 
 | 바로가기 | 상태 |
 |---|---|
-| 🌐 **배포 사이트** | ✅ **<https://haru-hanjang.onrender.com>** (Render 무료 플랜, 2026-11-24 접속·두 세션 동작 확인) — ⚠️ 무료 플랜이라 **서버가 잠들거나 재시작·재배포되면 기록이 초기화**됩니다. [현재 보존 범위](#배포-사이트의-현재-보존-범위) |
+| 🌐 **배포 사이트** | ✅ **<https://haru-hanjang.onrender.com>** (Render 무료 플랜 + Supabase 저장소, 2026-11-24 접속·두 세션 동작 확인) — 일기·영상·소원은 Supabase에 보관됩니다. [현재 보존 범위](#배포-사이트의-현재-보존-범위) |
 | 📦 GitHub 저장소 | <https://github.com/isoomin2003-gif/business-agent2> |
 | 💻 로컬 체험 | `npm install && npm start` → <http://localhost:3000> ([실행 방법](#5-기술-구성과-실행-방법)) |
 | 🧠 수업 내용 적용 | 책장의 **‘기억 찾기’** = 7주차 RAG + 5주차 OpenRouter API ([설명](#4-수업-내용-적용--기억-찾기)) |
@@ -113,8 +113,8 @@
 | 영역 | 기술 |
 |---|---|
 | 서버 | Node.js 22 (ESM), Express 4, Socket.IO 4 (실시간 접속·이동·말풍선·라디오·별똥별), Multer 2 (영상 업로드) |
-| 데이터베이스 | **SQLite** — Node 내장 `node:sqlite` (네이티브 빌드 불필요), `migrations/*.sql` 자동 적용 |
-| 영상 저장소 | 서버의 `DATA_DIR/videos/<사용자ID>/` (공개 폴더 밖). 인증 쿠키로 소유자를 확인한 뒤에만 Range 스트리밍 |
+| 데이터베이스 | 배포: **PostgreSQL(Supabase)** — `DATABASE_URL` 이 있으면 사용, 공개 API에 노출되지 않는 `haru` 스키마 + RLS<br>로컬: **SQLite** — Node 내장 `node:sqlite`. 두 경우 모두 `migrations/<db>/*.sql` 자동 적용 |
+| 영상 저장소 | 배포: **Supabase Storage 비공개 버킷** `diary-videos` — 서버가 소유자를 확인한 뒤 5분짜리 서명 주소로 재생<br>로컬: `DATA_DIR/videos/<사용자ID>/` (공개 폴더 밖), 소유자 확인 후 Range 스트리밍 |
 | 프런트엔드 | 빌드 도구 없는 바닐라 JS 모듈 + Canvas 2D 픽셀 아트(320×180 → 정수 배율 확대), 공원 자연음은 Web Audio로 합성 |
 | AI | OpenRouter Chat Completions (기본 모델 `anthropic/claude-haiku-5.5`, 환경변수로 변경) |
 | 테스트 | `node:test`(서버·RAG 11개), Playwright(브라우저 시나리오 — 개발 중 실행) |
@@ -149,7 +149,11 @@ npm start
 | `PORT` | 서버 포트 (기본 3000) | 로컬 `.env` / 배포 플랫폼이 자동 지정 |
 | `DATA_DIR` | SQLite DB와 업로드 영상 폴더. 배포 시 **영구 볼륨 경로**(`/data`) | `.env` / fly.toml·render.yaml에 지정됨 |
 | `PUBLIC_URL` | 배포 주소(OpenRouter `HTTP-Referer` 헤더용, 선택) | 배포 플랫폼 환경변수 |
-| `MAX_VIDEO_MB` | 업로드 영상 최대 크기 (기본 80) | `.env` / 플랫폼 |
+| `MAX_VIDEO_MB` | 업로드 영상 최대 크기 (기본 80, Supabase 무료 플랜은 50) | `.env` / render.yaml에 50으로 지정 |
+| `DATABASE_URL` | Supabase **Session pooler** 연결 주소(비밀번호 포함). 있으면 PostgreSQL에 저장 | Render Environment (**비밀**) |
+| `SUPABASE_URL` | Supabase Project URL. 있으면 영상을 Storage에 저장 | Render Environment |
+| `SUPABASE_SECRET_KEY` | Supabase Secret key(또는 service_role). **서버에서만** 사용 | Render Environment (**비밀**) |
+| `SUPABASE_BUCKET` | 영상 버킷 이름 (기본 `diary-videos`, 없으면 비공개로 자동 생성) | 보통 그대로 둠 |
 | `OPENROUTER_API_KEY` | 기억 찾기 답변 생성용 키. **서버에서만 사용** | `.env` / 플랫폼의 **비밀(secret)** 값 |
 | `OPENROUTER_MODEL` | 사용할 모델 ID | `.env` / 플랫폼 |
 | `OPENROUTER_BASE_URL`, `OPENROUTER_TIMEOUT_MS` | 보통 그대로 둠(테스트용 모의 서버 연결 시에만 변경) | `.env` |
@@ -159,10 +163,14 @@ npm start
 `.env` 파일, API 키, 시연 키, DB·업로드 영상(`data/`)은 `.gitignore` 로 커밋되지 않습니다.
 
 ### 데이터베이스·영상 저장소 초기 설정
-별도 설치가 필요 없습니다. 서버가 시작될 때 `DATA_DIR` 아래에 `haru.sqlite`, `videos/`, `tmp/` 를 만들고 마이그레이션을 적용합니다. 배포 환경에서는 이 폴더가 **재시작·재배포 후에도 남도록 영구 볼륨에 연결**해야 합니다.
+- **로컬**: 별도 설치가 필요 없습니다. 서버가 시작될 때 `DATA_DIR` 아래에 `haru.sqlite`, `videos/`, `tmp/` 를 만들고 마이그레이션을 적용합니다.
+- **배포(Supabase)**: Supabase 프로젝트만 만들고 위 세 값(`DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`)을 Render Environment에 넣으면 됩니다. 서버가 시작할 때 `haru` 스키마의 표(RLS 켜짐)와 비공개 버킷 `diary-videos` 를 직접 만듭니다. SQL을 따로 실행할 필요가 없습니다.
+  - `DATABASE_URL` 은 Supabase → **Connect → Connection String → Session pooler** 주소를 쓰세요(Direct connection은 Render 무료 서버에서 연결되지 않음). 비밀번호에 특수문자가 있으면 주소가 깨질 수 있어 영문·숫자 비밀번호를 권장합니다.
+  - 사용 중인 저장 방식은 `/healthz` 에서 확인할 수 있습니다: `{"ok":true,"db":"postgres","storage":"supabase"}`
+  - `TEST_DATABASE_URL=postgres://... npm test` 로 PostgreSQL + Storage(모의 서버) 모드 테스트와, 로컬 디스크를 비운 채 재시작해도 기록이 남는지 확인하는 테스트를 실행할 수 있습니다.
 
 ### 배포 방법
-실시간 상태(접속자, 좌석, 라디오 대기열)는 서버 메모리에, DB와 영상은 디스크에 있으므로 **영구 볼륨이 붙은 서버 1대**로 운영합니다(WebSocket 지원 필요 — 정적 호스팅·서버리스는 맞지 않음).
+실시간 상태(접속자, 좌석, 라디오 대기열)는 서버 메모리에 있으므로 **서버 1대**로 운영합니다(WebSocket 지원 필요 — 정적 호스팅·서버리스는 맞지 않음). 기록은 **Supabase(무료)** 에 두거나, Fly.io처럼 영구 볼륨을 붙여 SQLite를 쓸 수 있습니다.
 
 **A. Fly.io (`fly.toml` 포함)**
 ```bash
@@ -179,19 +187,24 @@ fly deploy
 ```
 
 #### 배포 사이트의 현재 보존 범위
-현재 배포(<https://haru-hanjang.onrender.com>)는 Render **무료 웹 서비스**이고, 아래 데이터가 모두 **서버 컨테이너 안의 디스크(`DATA_DIR=/data`)** 에 있습니다. 무료 플랜의 이 디스크는 **15분간 요청이 없어 잠들었다 깨어날 때, 재시작·재배포될 때 비워집니다.**
+현재 배포(<https://haru-hanjang.onrender.com>)는 **Render 무료 웹 서비스 + Supabase 무료 프로젝트**입니다. Render 컨테이너의 디스크는 절전·재시작·재배포 때 비워지지만, 기록은 그 밖의 Supabase에 있습니다.
 
-| 데이터 | 저장 위치 | 서버가 다시 시작되면 |
+| 데이터 | 저장 위치 | Render 서버가 다시 시작되면 |
 |---|---|---|
-| 게스트 식별 정보 | 브라우저 쿠키 `haru_guest`(180일) + SQLite `users` 표(닉네임, 토큰 해시) | 쿠키는 남지만 서버의 계정이 사라져 첫 화면으로 돌아가고 새 게스트가 됨 |
-| 다이어리 문장 | SQLite `diary_entries` 표 (`/data/haru.sqlite`) | **사라짐** |
-| 영상 파일 | `/data/videos/<사용자ID>/` 파일 + SQLite `videos` 표 | **사라짐** |
-| 공개 소원·공감/응원 | SQLite `wishes`, `wish_reactions` 표 | **사라짐** |
+| 게스트 식별 정보 | 브라우저 쿠키 `haru_guest`(180일) + Supabase Postgres `haru.users`(닉네임, 토큰 해시) | **남음** — 같은 브라우저로 오면 같은 방·같은 기록 |
+| 다이어리 문장 | Supabase Postgres `haru.diary_entries` | **남음** |
+| 영상 파일 | Supabase Storage **비공개** 버킷 `diary-videos/<사용자ID>/` + `haru.videos` 표 | **남음** (본인만 서명 주소로 재생) |
+| 공개 소원·공감/응원, 별똥별 비공개 소원 | Supabase Postgres `haru.wishes`, `haru.wish_reactions` | **남음** |
+| 업로드 중 임시 파일 | Render 컨테이너 `/data/tmp` | 사라짐(저장이 끝나면 바로 지워지는 파일) |
 | 접속자·좌석·말풍선·라디오 대기열·별똥별 | 서버 메모리(원래 저장하지 않는 실시간 상태) | 초기화(의도된 동작) |
 
-즉 **서버가 깨어 있는 동안 쓴 기록은 그동안 다시 볼 수 있지만, 며칠 뒤 다시 접속하면 남아 있지 않을 가능성이 높습니다.** 발표 당일에는 시연 몇 분 전에 사이트를 열어 깨워 두고 샘플 일기를 작성해 두세요. 무료 플랜을 유지하면서 기록을 보존하려면 DB와 영상을 외부 무료 저장소로 옮겨야 합니다(후속 개발 계획 참고).
+**남아 있는 제약**
+- 15분간 접속이 없으면 Render 서버가 잠들어 **첫 접속이 약 1분** 걸립니다. 발표 몇 분 전에 열어 두세요.
+- Supabase 무료 프로젝트는 **약 1주일 동안 사용이 없으면 일시정지**됩니다. 데이터는 남고, Supabase 대시보드에서 **Restore** 하면 돌아옵니다. 평가 전에 한 번 확인하세요.
+- 기록을 다시 열 수 있는 조건은 그대로 **같은 브라우저의 게스트 쿠키**입니다(쿠키 삭제·시크릿 창 종료·다른 기기에서는 열 수 없음).
+- Supabase 전환(2026-11-24) 이전에 Render 디스크에 쓴 기록은 옮겨지지 않았습니다.
 
-**B. Render (`render.yaml` 포함, 무료 플랜)** — Render 대시보드 → New → **Blueprint** → 이 저장소 선택. `OPENROUTER_API_KEY` 는 생성 화면에서 입력하고, `PUBLIC_URL` 은 배포 후 나온 주소로 Environment 탭에서 채웁니다. `ADMIN_KEY` 는 자동 생성된 값을 Environment 탭에서 확인합니다.
+**B. Render (`render.yaml` 포함, 무료 플랜)** — Render 대시보드 → New → **Blueprint** → 이 저장소 선택. `OPENROUTER_API_KEY`, `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY` 는 생성 화면이나 Environment 탭에서 입력하고, `PUBLIC_URL` 은 배포 후 나온 주소로 Environment 탭에서 채웁니다. `ADMIN_KEY` 는 자동 생성된 값을 Environment 탭에서 확인합니다.
 
 > ⚠️ 현재 `render.yaml` 은 **Free 플랜**입니다. 무료 플랜에는 영구 디스크가 없어 **서버가 잠들었다 깨거나(15분 무접속 시) 재배포되면 다이어리·영상·소원이 모두 초기화**되고, 잠든 뒤 첫 접속은 깨어나는 데 1분가량 걸립니다. 기록을 유지하려면 `plan: starter` 로 바꾸고 `disk:` 블록의 주석을 해제하세요(유료).
 
@@ -259,13 +272,11 @@ docs/screenshots/
 **🔧 외부 서비스 설정 후 확인이 필요한 기능**
 - 실제 OpenRouter 키로 생성한 답변 품질 (개발 중에는 키가 없어 모의 서버로 요청·응답 경로를 검증)
 - 서로 다른 컴퓨터·네트워크에서의 실시간 접속, 배포 사이트의 별똥별 시연 도구(`/demo`, Render의 `ADMIN_KEY` 필요)와 실제 OpenRouter 키 연결
-- **재시작·재배포 후 기록 보존** — 현재 무료 플랜 구조에서는 보존되지 않음(위 ‘배포 사이트의 현재 보존 범위’)
 - 실제 휴대폰에서의 갤러리 선택·직접 촬영 업로드와 자동재생 정책(‘라디오 켜기’ 버튼)
 
 **🗺️ 후속 개발 계획**
 - 코인을 모아 가구를 구매하는 **방 꾸미기**
 - AI 책 제목 생성(월별 책 표지), 저장 후 AI 한 줄 코멘트
-- **무료 플랜에서도 기록 보존**: DB와 영상을 외부 무료 저장소(예: Supabase의 Postgres + 비공개 Storage)로 옮겨 재시작·재배포 후에도 유지
 - 게스트 기록을 다른 기기로 옮기는 계정 연결
 
 ---
