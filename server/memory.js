@@ -1,6 +1,6 @@
 import express from 'express';
-import { openDb } from './db.js';
-import { requireUser } from './auth.js';
+import { getDb } from './db.js';
+import { requireUser, wrap } from './auth.js';
 import { retrieve, generateAnswer, buildPayload, exampleRecords } from './rag.js';
 
 export const memoryRouter = express.Router();
@@ -19,7 +19,7 @@ memoryRouter.get('/memory/examples', (req, res) => {
   res.json({ records: exampleRecords(String(req.query.today || '')) });
 });
 
-memoryRouter.post('/memory/search', express.json(), async (req, res) => {
+memoryRouter.post('/memory/search', express.json(), wrap(async (req, res) => {
   const question = String(req.body?.question ?? '').trim().slice(0, 120);
   const mode = req.body?.mode === 'example' ? 'example' : 'mine';
   const today = String(req.body?.today ?? '');
@@ -29,7 +29,7 @@ memoryRouter.post('/memory/search', express.json(), async (req, res) => {
   // 1) Retrieval — 현재 사용자의 기록(또는 분리된 예시 기록)만 서버 안에서 검색
   const docs = mode === 'example'
     ? exampleRecords(today)
-    : openDb().prepare('SELECT id, entry_date AS date, sentence, video_id FROM diary_entries WHERE user_id = ?').all(req.user.id)
+    : (await getDb().all('SELECT id, entry_date AS date, sentence, video_id FROM diary_entries WHERE user_id = ?', [req.user.id]))
       .map((r) => ({ id: r.id, date: r.date, sentence: r.sentence, videoUrl: `/api/videos/${r.video_id}` }));
   const r = retrieve(question, docs, today);
   const sources = r.results.map((d) => ({ id: d.id, date: d.date, sentence: d.sentence, score: d.score, example: !!d.example }));
@@ -46,4 +46,4 @@ memoryRouter.post('/memory/search', express.json(), async (req, res) => {
   const payload = buildPayload(question, sources, today);
   const gen = await generateAnswer(question, sources, today);
   res.json({ ...base, ...gen, sentToAi: { model: payload.model, question, records: sources.map((s) => ({ date: s.date, sentence: s.sentence })) } });
-});
+}));

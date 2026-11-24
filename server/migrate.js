@@ -1,4 +1,5 @@
-import { openDb } from './db.js';
-import { PATHS } from './config.js';
-openDb();
-console.log(`[db] ready: ${PATHS.db}`);
+import { initDb } from './db.js';
+
+const db = await initDb();
+console.log(`[db] ready (${db.kind})`);
+await db.close();

@@ -32,6 +32,13 @@ export const config = {
     maxSec: num(process.env.STAR_MAX_SEC, 420),
   },
   secureCookie: process.env.NODE_ENV === 'production',
+  // 영구 보존용 외부 저장소 (없으면 DATA_DIR의 SQLite + 로컬 디스크 사용)
+  databaseUrl: process.env.DATABASE_URL || '',
+  supabase: {
+    url: (process.env.SUPABASE_URL || '').replace(/\/$/, ''),
+    secretKey: process.env.SUPABASE_SECRET_KEY || '',
+    bucket: process.env.SUPABASE_BUCKET || 'diary-videos',
+  },
 };
 
 export const PATHS = {

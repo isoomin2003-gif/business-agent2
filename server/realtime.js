@@ -101,11 +101,12 @@ export function setupRealtime(server) {
   OUTDOOR.forEach(scheduleStar);
 
   io.use((socket, next) => {
-    const user = userFromToken(parseCookieHeader(socket.handshake.headers.cookie)[COOKIE]);
-    if (!user) return next(new Error('no_session'));
-    socket.data.user = user;
-    socket.data.place = 'room';
-    next();
+    userFromToken(parseCookieHeader(socket.handshake.headers.cookie)[COOKIE]).then((user) => {
+      if (!user) return next(new Error('no_session'));
+      socket.data.user = user;
+      socket.data.place = 'room';
+      next();
+    }).catch((e) => { console.error('[socket] auth failed:', e.message); next(new Error('server_error')); });
   });
 
   io.on('connection', (socket) => {

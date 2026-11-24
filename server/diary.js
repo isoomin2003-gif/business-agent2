@@ -3,9 +3,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import express from 'express';
 import multer from 'multer';
-import { openDb, nowIso } from './db.js';
+import { getDb, nowIso } from './db.js';
+import { getStorage } from './storage.js';
 import { config, PATHS } from './config.js';
-import { requireUser } from './auth.js';
+import { requireUser, wrap } from './auth.js';
 
 export const SAMPLE_VIDEOS = {
   sunset: { file: 'sample-sunset.mp4', poster: '/media/samples/sample-sunset.jpg', title: '노을 지는 창가' },
@@ -18,7 +19,6 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const EXT = { 'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm', 'video/3gpp': '.3gp', 'video/x-m4v': '.m4v', 'video/ogg': '.ogv' };
 
 fs.mkdirSync(PATHS.tmp, { recursive: true });
-fs.mkdirSync(PATHS.videos, { recursive: true });
 
 const upload = multer({
   dest: PATHS.tmp,
@@ -34,32 +34,24 @@ export function isPlausibleToday(date) {
   return Math.abs(d - Date.now()) <= 1000 * 60 * 60 * 38;
 }
 
-function userDir(userId) {
-  const dir = path.join(PATHS.videos, userId);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function insertVideo(userId, srcPath, mime, source, move) {
+/** 영상을 저장소(로컬 디스크 또는 Supabase 비공개 버킷)에 넣고 DB에 기록 */
+async function insertVideo(userId, srcPath, mime, source) {
   const id = crypto.randomUUID();
   const key = `${userId}/${id}${EXT[mime] || '.mp4'}`;
-  const dest = path.join(PATHS.videos, key);
-  userDir(userId);
-  if (move) fs.renameSync(srcPath, dest); else fs.copyFileSync(srcPath, dest);
-  const size = fs.statSync(dest).size;
-  openDb().prepare('INSERT INTO videos (id, user_id, storage_key, mime, size, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(id, userId, key, mime, size, source, nowIso());
+  const size = (await fs.promises.stat(srcPath)).size;
+  await getStorage().put(key, srcPath, mime);
+  await getDb().run('INSERT INTO videos (id, user_id, storage_key, mime, size, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, userId, key, mime, size, source, nowIso()]);
   return { id, size, mime };
 }
 
-function deleteVideoIfUnused(videoId, userId) {
-  const db = openDb();
-  const used = db.prepare('SELECT 1 FROM diary_entries WHERE video_id = ?').get(videoId);
-  if (used) return;
-  const v = db.prepare('SELECT storage_key FROM videos WHERE id = ? AND user_id = ?').get(videoId, userId);
+async function deleteVideoIfUnused(videoId, userId) {
+  const db = getDb();
+  if (await db.get('SELECT 1 AS used FROM diary_entries WHERE video_id = ?', [videoId])) return;
+  const v = await db.get('SELECT storage_key FROM videos WHERE id = ? AND user_id = ?', [videoId, userId]);
   if (!v) return;
-  db.prepare('DELETE FROM videos WHERE id = ?').run(videoId);
-  fs.rm(path.join(PATHS.videos, v.storage_key), { force: true }, () => {});
+  await db.run('DELETE FROM videos WHERE id = ?', [videoId]);
+  getStorage().remove(v.storage_key).catch(() => {});
 }
 
 const entryJson = (r) => ({
@@ -72,82 +64,84 @@ diaryRouter.use(['/videos', '/diary'], requireUser);
 
 // 영상 업로드(개인 저장소). 저장 전 단계이므로 문장은 클라이언트에 그대로 남아 있습니다.
 diaryRouter.post('/videos', (req, res) => {
-  upload.single('video')(req, res, (err) => {
+  upload.single('video')(req, res, async (err) => {
     if (err) {
       const tooBig = err.code === 'LIMIT_FILE_SIZE';
       return res.status(tooBig ? 413 : 400).json({ error: 'upload_failed', message: tooBig ? `영상은 ${config.maxVideoMb}MB 이하만 올릴 수 있어요.` : '업로드 중 문제가 생겼어요.' });
     }
     if (!req.file) return res.status(400).json({ error: 'not_video', message: '영상 파일만 올릴 수 있어요.' });
-    if (req.file.size < 1024) {
-      fs.rm(req.file.path, { force: true }, () => {});
-      return res.status(400).json({ error: 'empty_video', message: '영상 파일이 비어 있거나 손상됐어요.' });
-    }
+    const tmp = req.file.path;
     try {
-      const v = insertVideo(req.user.id, req.file.path, req.file.mimetype, 'upload', true);
+      if (req.file.size < 1024) return res.status(400).json({ error: 'empty_video', message: '영상 파일이 비어 있거나 손상됐어요.' });
+      const v = await insertVideo(req.user.id, tmp, req.file.mimetype, 'upload');
       res.json({ videoId: v.id, url: `/api/videos/${v.id}` });
     } catch (e) {
-      fs.rm(req.file.path, { force: true }, () => {});
-      console.error(e);
+      console.error('[video] upload failed:', e.message);
       res.status(500).json({ error: 'store_failed', message: '영상을 저장하지 못했어요.' });
+    } finally {
+      fs.rm(tmp, { force: true }, () => {});
     }
   });
 });
 
 // 샘플 영상을 내 개인 저장소로 복사합니다(이후에는 일반 기록과 똑같이 본인만 열람).
-diaryRouter.post('/videos/sample', express.json(), (req, res) => {
+diaryRouter.post('/videos/sample', express.json(), wrap(async (req, res) => {
   const s = SAMPLE_VIDEOS[req.body?.sampleId];
   if (!s) return res.status(400).json({ error: 'bad_sample', message: '없는 샘플이에요.' });
-  const v = insertVideo(req.user.id, path.join(PATHS.samples, s.file), 'video/mp4', 'sample', false);
-  res.json({ videoId: v.id, url: `/api/videos/${v.id}` });
-});
+  try {
+    const v = await insertVideo(req.user.id, path.join(PATHS.samples, s.file), 'video/mp4', 'sample');
+    res.json({ videoId: v.id, url: `/api/videos/${v.id}` });
+  } catch (e) {
+    console.error('[video] sample copy failed:', e.message);
+    res.status(500).json({ error: 'store_failed', message: '샘플 영상을 준비하지 못했어요.' });
+  }
+}));
 
-// 영상 스트리밍: 소유자만 접근 가능, Range 요청 지원
-diaryRouter.get('/videos/:id', (req, res) => {
-  const v = openDb().prepare('SELECT storage_key, mime, user_id FROM videos WHERE id = ?').get(String(req.params.id));
+// 영상 열람: 소유자만. 로컬은 Range 스트리밍, Supabase는 5분짜리 서명 주소로 이동
+diaryRouter.get('/videos/:id', wrap(async (req, res) => {
+  const v = await getDb().get('SELECT storage_key, mime, user_id FROM videos WHERE id = ?', [String(req.params.id)]);
   if (!v || v.user_id !== req.user.id) return res.status(404).json({ error: 'not_found', message: '영상을 찾을 수 없어요.' });
   res.set('Cache-Control', 'private, no-store');
-  res.type(v.mime);
-  res.sendFile(path.join(PATHS.videos, v.storage_key), { acceptRanges: true });
-});
+  await getStorage().serve(res, v.storage_key, v.mime);
+}));
 
-diaryRouter.get('/diary/day/:date', (req, res) => {
-  const r = openDb().prepare('SELECT * FROM diary_entries WHERE user_id = ? AND entry_date = ?').get(req.user.id, String(req.params.date));
+diaryRouter.get('/diary/day/:date', wrap(async (req, res) => {
+  const r = await getDb().get('SELECT * FROM diary_entries WHERE user_id = ? AND entry_date = ?', [req.user.id, String(req.params.date)]);
   res.json({ entry: r ? entryJson(r) : null });
-});
+}));
 
-diaryRouter.put('/diary/day/:date', express.json(), (req, res) => {
+diaryRouter.put('/diary/day/:date', express.json(), wrap(async (req, res) => {
   const date = String(req.params.date);
   const sentence = String(req.body?.sentence ?? '').replace(/\s+/g, ' ').trim();
   const videoId = String(req.body?.videoId ?? '');
   if (!isPlausibleToday(date)) return res.status(400).json({ error: 'bad_date', message: '오늘 날짜의 페이지만 쓸 수 있어요.' });
   if (!sentence) return res.status(400).json({ error: 'empty_sentence', message: '한 문장을 적어 주세요.' });
   if ([...sentence].length > MAX_SENTENCE) return res.status(400).json({ error: 'too_long', message: `문장은 ${MAX_SENTENCE}자까지 적을 수 있어요.` });
-  const db = openDb();
-  const v = db.prepare('SELECT id FROM videos WHERE id = ? AND user_id = ?').get(videoId, req.user.id);
+  const db = getDb();
+  const v = await db.get('SELECT id FROM videos WHERE id = ? AND user_id = ?', [videoId, req.user.id]);
   if (!v) return res.status(400).json({ error: 'no_video', message: '영상을 먼저 골라 주세요.' });
-  const prev = db.prepare('SELECT * FROM diary_entries WHERE user_id = ? AND entry_date = ?').get(req.user.id, date);
+  const prev = await db.get('SELECT * FROM diary_entries WHERE user_id = ? AND entry_date = ?', [req.user.id, date]);
   const t = nowIso();
   if (prev) {
-    db.prepare('UPDATE diary_entries SET sentence = ?, video_id = ?, updated_at = ? WHERE id = ?').run(sentence, videoId, t, prev.id);
-    if (prev.video_id !== videoId) deleteVideoIfUnused(prev.video_id, req.user.id);
+    await db.run('UPDATE diary_entries SET sentence = ?, video_id = ?, updated_at = ? WHERE id = ?', [sentence, videoId, t, prev.id]);
+    if (prev.video_id !== videoId) await deleteVideoIfUnused(prev.video_id, req.user.id);
   } else {
-    db.prepare('INSERT INTO diary_entries (id, user_id, entry_date, sentence, video_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(crypto.randomUUID(), req.user.id, date, sentence, videoId, t, t);
+    await db.run('INSERT INTO diary_entries (id, user_id, entry_date, sentence, video_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [crypto.randomUUID(), req.user.id, date, sentence, videoId, t, t]);
   }
-  const r = db.prepare('SELECT * FROM diary_entries WHERE user_id = ? AND entry_date = ?').get(req.user.id, date);
+  const r = await db.get('SELECT * FROM diary_entries WHERE user_id = ? AND entry_date = ?', [req.user.id, date]);
   res.json({ entry: entryJson(r), created: !prev });
-});
+}));
 
-diaryRouter.get('/diary/months', (req, res) => {
-  const rows = openDb().prepare(`SELECT substr(entry_date, 1, 7) AS month, COUNT(*) AS count FROM diary_entries
-    WHERE user_id = ? GROUP BY month ORDER BY month`).all(req.user.id);
-  res.json({ months: rows.map((r) => ({ month: r.month, count: r.count })) });
-});
+diaryRouter.get('/diary/months', wrap(async (req, res) => {
+  const rows = await getDb().all(`SELECT substr(entry_date, 1, 7) AS month, COUNT(*) AS count FROM diary_entries
+    WHERE user_id = ? GROUP BY substr(entry_date, 1, 7) ORDER BY month`, [req.user.id]);
+  res.json({ months: rows.map((r) => ({ month: r.month, count: Number(r.count) })) });
+}));
 
-diaryRouter.get('/diary/month/:ym', (req, res) => {
+diaryRouter.get('/diary/month/:ym', wrap(async (req, res) => {
   const ym = String(req.params.ym);
   if (!/^\d{4}-\d{2}$/.test(ym)) return res.status(400).json({ error: 'bad_month' });
-  const rows = openDb().prepare('SELECT * FROM diary_entries WHERE user_id = ? AND entry_date LIKE ? ORDER BY entry_date')
-    .all(req.user.id, `${ym}-%`);
+  const rows = await getDb().all('SELECT * FROM diary_entries WHERE user_id = ? AND entry_date LIKE ? ORDER BY entry_date', [req.user.id, `${ym}-%`]);
   res.json({ month: ym, entries: rows.map(entryJson) });
-});
+}));

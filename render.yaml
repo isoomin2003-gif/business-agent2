@@ -1,7 +1,8 @@
 # Render Blueprint (README '배포' 참고) — 무료(Free) 플랜 설정
-# 주의: 무료 플랜에는 영구 디스크가 없어서, 서버가 잠들었다 깨거나 재시작·재배포되면
-#       다이어리·영상·소원(DATA_DIR=/data)이 모두 초기화됩니다.
-#       기록을 유지하려면 plan을 starter로 바꾸고 아래 disk 블록의 주석을 해제하세요.
+# 무료 플랜에는 영구 디스크가 없으므로, 기록은 Supabase에 보관합니다.
+#   DATABASE_URL(Postgres) + SUPABASE_URL/SUPABASE_SECRET_KEY(비공개 Storage 버킷)를
+#   Render Environment에 넣으면 재시작·재배포 후에도 게스트·일기·영상·소원이 남습니다.
+#   이 값들이 없으면 컨테이너 안 SQLite(/data)를 쓰고, 재시작 때 초기화됩니다.
 services:
   - type: web
     name: haru-hanjang
@@ -26,3 +27,11 @@ services:
         generateValue: true
       - key: PUBLIC_URL
         sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: MAX_VIDEO_MB
+        value: "50"

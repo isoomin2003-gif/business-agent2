@@ -6,23 +6,37 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { io as ioc } from 'socket.io-client';
+import { startMockStorage } from './mock-supabase-storage.js';
 
+// TEST_DATABASE_URL을 주면 PostgreSQL + Supabase Storage(모의 서버) 모드로, 없으면 SQLite + 로컬 디스크로 실행
+const PG = process.env.TEST_DATABASE_URL || '';
 const PORT = 3900 + Math.floor(Math.random() * 90);
 const BASE = `http://127.0.0.1:${PORT}`;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'haru-test-'));
 let proc;
+let storage;
 
 before(async () => {
+  const extra = {};
+  if (PG) {
+    storage = await startMockStorage();
+    Object.assign(extra, { DATABASE_URL: PG, SUPABASE_URL: storage.url, SUPABASE_SECRET_KEY: storage.secret });
+  }
   proc = spawn(process.execPath, ['--no-warnings=ExperimentalWarning', 'server/index.js'], {
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, ADMIN_KEY: 'k', OPENROUTER_API_KEY: '' }, stdio: 'ignore',
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, ADMIN_KEY: 'k', OPENROUTER_API_KEY: '', DATABASE_URL: '', SUPABASE_URL: '', SUPABASE_SECRET_KEY: '', ...extra },
+    stdio: ['ignore', 'ignore', 'inherit'],
   });
-  for (let i = 0; i < 50; i++) {
-    try { if ((await fetch(`${BASE}/healthz`)).ok) return; } catch { /* 기동 중 */ }
+  for (let i = 0; i < 80; i++) {
+    try {
+      const h = await (await fetch(`${BASE}/healthz`)).json();
+      assert.equal(h.db, PG ? 'postgres' : 'sqlite');
+      return;
+    } catch (e) { if (e.code === 'ERR_ASSERTION') throw e; }
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error('server did not start');
 });
-after(() => { proc?.kill(); fs.rmSync(dataDir, { recursive: true, force: true }); });
+after(() => { proc?.kill(); storage?.close(); fs.rmSync(dataDir, { recursive: true, force: true }); });
 
 async function guest() {
   const res = await fetch(`${BASE}/api/guest`, { method: 'POST' });

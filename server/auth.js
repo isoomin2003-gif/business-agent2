@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { openDb, nowIso } from './db.js';
+import { getDb, nowIso } from './db.js';
 import { config } from './config.js';
 
 export const COOKIE = 'haru_guest';
@@ -10,25 +10,27 @@ const NOUN = ['고양이', '너구리', '부엉이', '고래', '여우', '다람
 
 export const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
+/** async 라우트의 오류를 Express 오류 처리로 넘깁니다 */
+export const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 function randomNickname() {
   const r = (a) => a[crypto.randomInt(a.length)];
   return `${r(ADJ)} ${r(NOUN)}${crypto.randomInt(10, 100)}`;
 }
 
-export function createGuest() {
-  const db = openDb();
+export async function createGuest() {
   const token = crypto.randomBytes(32).toString('base64url');
   const user = { id: crypto.randomUUID(), nickname: randomNickname(), color: crypto.randomInt(8) };
   const t = nowIso();
-  db.prepare('INSERT INTO users (id, token_hash, nickname, color, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(user.id, hashToken(token), user.nickname, user.color, t, t);
+  await getDb().run('INSERT INTO users (id, token_hash, nickname, color, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [user.id, hashToken(token), user.nickname, user.color, t, t]);
   return { token, user };
 }
 
-export function userFromToken(token) {
+export async function userFromToken(token) {
   if (!token || typeof token !== 'string' || token.length > 100) return null;
-  const row = openDb().prepare('SELECT id, nickname, color FROM users WHERE token_hash = ?').get(hashToken(token));
-  return row ? { id: row.id, nickname: row.nickname, color: row.color } : null;
+  const row = await getDb().get('SELECT id, nickname, color FROM users WHERE token_hash = ?', [hashToken(token)]);
+  return row ? { id: row.id, nickname: row.nickname, color: Number(row.color) } : null;
 }
 
 export function setGuestCookie(res, token) {
@@ -38,18 +40,20 @@ export function setGuestCookie(res, token) {
 }
 
 /** 쿠키의 게스트 토큰으로 사용자를 찾고, 없으면 401 */
-export function requireUser(req, res, next) {
-  const user = userFromToken(req.cookies?.[COOKIE]);
+export const requireUser = wrap(async (req, res, next) => {
+  const user = await userFromToken(req.cookies?.[COOKIE]);
   if (!user) return res.status(401).json({ error: 'no_session', message: '게스트 세션이 없어요. 처음 화면에서 바로 시작하기를 눌러 주세요.' });
   req.user = user;
   next();
-}
+});
 
 export function parseCookieHeader(header = '') {
   const out = {};
   for (const part of header.split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i > 0) {
+      try { out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim()); } catch { /* 잘못된 쿠키 무시 */ }
+    }
   }
   return out;
 }
