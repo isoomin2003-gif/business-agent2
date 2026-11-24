@@ -34,7 +34,7 @@ function drawLanding() {
   const c = cv.getContext('2d');
   room.background(c, { bookCount: 7 });
   room.animate(c, 0);
-  drawAvatar(c, 150, 130, 3, { pose: 'sit', back: true });
+  drawAvatar(c, PLACES.room.seats.chair.x, PLACES.room.seats.chair.y + 2, 3, { pose: 'sit', back: true });
   room.props[0].draw(c);
 }
 
@@ -102,7 +102,7 @@ async function enterRoom(from = 'door') {
   refreshRoomBooks();
   if (!store.get('firstHintShown')) {
     store.set('firstHintShown', true);
-    firstHint = stage.banner(150, 66, '책상을 눌러 오늘의 한 장을 기록해 보세요', 20000, 'first-hint');
+    firstHint = stage.banner(150, 92, '책상을 눌러 오늘의 한 장을 기록해 보세요', 20000, 'first-hint');
   }
 }
 

@@ -12,13 +12,13 @@ export const PLACES = {
     walk: {
       band: { x0: 6, x1: 314, y0: 118, y1: 176 },
       obstacles: [
-        { x: 102, y: 100, w: 100, h: 40 }, // 책상
-        { x: 136, y: 124, w: 28, h: 20 }, // 의자
+        { x: 120, y: 108, w: 60, h: 28 }, // 책상 (1인용)
+        { x: 138, y: 118, w: 24, h: 22 }, // 의자
         { x: 204, y: 100, w: 68, h: 32 }, // 책장
         { x: 0, y: 100, w: 26, h: 26 }, // 화분
       ],
     },
-    seats: { chair: { x: 150, y: 128, approach: { x: 150, y: 150 }, back: true } },
+    seats: { chair: { x: 150, y: 124, approach: { x: 150, y: 148 }, back: true } },
   },
   rooftop: {
     name: '옥상',

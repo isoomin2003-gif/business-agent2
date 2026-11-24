@@ -196,7 +196,8 @@ export class Stage {
       const p = this.pos(e);
       const seated = !p.moving && e.seat;
       const footY = seated ? p.y + 2 : p.y;
-      e.tag.style.left = `${Math.min(Math.max(p.x * k, 50), 320 * k - 50)}px`;
+      const half = (e.tag.offsetWidth || 100) / 2 + 2; // 이름표가 화면 가장자리에서 잘리지 않게
+      e.tag.style.left = `${Math.min(Math.max(p.x * k, half), 320 * k - half)}px`;
       e.tag.style.top = `${(footY + 2) * k}px`;
       // 같은 벤치의 이웃 좌석끼리 이름표가 겹치지 않도록 짝수 좌석은 한 줄 아래로
       const lower = seated && Number(String(e.seat).replace(/\D/g, '')) % 2 === 0;
