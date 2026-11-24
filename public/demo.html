@@ -34,7 +34,7 @@
     </div>
     <div class="card stack">
       <h2 style="margin:0">🔎 기억 찾기 검색 과정 표시</h2>
-      <p class="muted" style="margin:0">켜면 <b>이 브라우저</b>의 기억 찾기 결과 아래에 ‘검색 과정 보기’(실제 검색어, 찾은 기록 수, AI 판단, AI에 보낸 내용)가 나타나요. 일반 방문자 화면에는 보이지 않아요.</p>
+      <p class="muted" style="margin:0">켜면 <b>이 브라우저</b>에 시연 키가 저장되고(끄면 삭제), 기억 찾기 결과 아래에 ‘검색 과정 보기’(실제 검색어, 찾은 기록 수, AI 판단, AI에 보낸 내용)가 나타나요. 일반 방문자 화면에는 보이지 않아요.</p>
       <div class="row"><button class="btn btn-primary" id="demo-on">시연 모드 켜기</button><button class="btn" id="demo-off">끄기</button><span id="demo-state" class="muted"></span></div>
     </div>
     <p id="out" class="status"></p>
@@ -53,15 +53,15 @@
     document.getElementById('check').onclick = () => call('/api/admin/check');
     document.querySelectorAll('[data-star]').forEach((b) => (b.onclick = () => call('/api/admin/star', { place: b.dataset.star })));
     document.getElementById('ff').onclick = () => call('/api/admin/radio/fast-forward', { secondsLeft: 8 });
-    const demoState = () => { let on = false; try { on = localStorage.getItem('haruDemoMode') === 'true'; } catch {} document.getElementById('demo-state').textContent = on ? '지금: 켜짐' : '지금: 꺼짐'; };
+    const demoState = () => { let on = false; try { on = !!localStorage.getItem('haruDemoKey'); } catch {} document.getElementById('demo-state').textContent = on ? '지금: 켜짐' : '지금: 꺼짐'; };
     document.getElementById('demo-on').onclick = async () => {
       // 시연 키가 맞을 때만 켭니다
       const res = await fetch('/api/admin/check', { headers: { 'X-Admin-Key': key.value } });
       if (!res.ok) { out.textContent = '시연 키가 올바르지 않아요.'; out.className = 'status err'; return; }
-      try { sessionStorage.setItem('haruAdminKey', key.value); localStorage.setItem('haruDemoMode', 'true'); } catch {}
+      try { sessionStorage.setItem('haruAdminKey', key.value); localStorage.setItem('haruDemoKey', key.value); localStorage.removeItem('haruDemoMode'); } catch {}
       out.textContent = '시연 모드를 켰어요. 사이트 탭을 새로고침하지 않아도 다음 검색부터 보여요.'; out.className = 'status ok'; demoState();
     };
-    document.getElementById('demo-off').onclick = () => { try { localStorage.removeItem('haruDemoMode'); } catch {} out.textContent = '시연 모드를 껐어요.'; out.className = 'status ok'; demoState(); };
+    document.getElementById('demo-off').onclick = () => { try { localStorage.removeItem('haruDemoKey'); localStorage.removeItem('haruDemoMode'); } catch {} out.textContent = '시연 모드를 껐어요.'; out.className = 'status ok'; demoState(); };
     demoState();
   </script>
 </body>

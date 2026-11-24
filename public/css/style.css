@@ -214,3 +214,4 @@ table.credits td, table.credits th { border-bottom: 1px solid var(--border); pad
 .result.searching { color: var(--muted); }
 .dots { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; animation: pulse 1s ease-in-out infinite; }
 .trace ol { padding-left: 20px; line-height: 1.7; font-size: 14px; margin: 8px 0; }
+.cards-label { font-size: 13px; margin: 6px 0 0; }

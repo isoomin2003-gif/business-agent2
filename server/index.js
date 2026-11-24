@@ -65,7 +65,15 @@ app.post('/api/admin/radio/fast-forward', requireAdmin, express.json(), (req, re
 });
 app.get('/api/admin/check', requireAdmin, (req, res) => res.json({ ok: true }));
 
-app.use(express.static(PATHS.public, { extensions: ['html'], maxAge: '1h' }));
+// 페이지·JS·CSS는 매번 서버에 새 버전이 있는지 확인(no-cache + ETag)해서, 배포 직후에도 옛 화면이 남지 않게 합니다.
+// 음원·샘플 영상·이미지는 바뀌지 않으므로 하루 동안 캐시합니다.
+app.use(express.static(PATHS.public, {
+  extensions: ['html'],
+  setHeaders(res, filePath) {
+    if (/\.(html|js|css)$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
+    else res.setHeader('Cache-Control', 'public, max-age=86400');
+  },
+}));
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found' }));
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

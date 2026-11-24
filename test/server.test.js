@@ -130,10 +130,16 @@ test('기억 찾기: 키가 없으면 no_key 상태로 검색 결과만 돌려�
   const r = await a.call('/api/memory/search', { method: 'POST', body: JSON.stringify({ question: '이번 달에 친구랑 웃었던 날이 언제였지?', mode: 'example', today }) });
   assert.equal(r.body.status, 'no_key');
   assert.equal(r.body.candidates[0].id, 'ex-1'); // 검색으로 찾은 기록은 직접 열어볼 수 있음
-  assert.equal(r.body.trace[0].kind, 'search');
+  // 일반 응답에는 검색어·AI 판단·전송 JSON이 없음
+  for (const k of ['trace', 'sentToAi', 'range']) assert.equal(r.body[k], undefined, k);
+  // 시연 키가 있으면 검색 과정이 함께 옴
+  const demo = await a.call('/api/memory/search', { method: 'POST', headers: { 'X-Admin-Key': 'k' }, body: JSON.stringify({ question: '이번 달에 친구랑 웃었던 날이 언제였지?', mode: 'example', today }) });
+  assert.equal(demo.body.trace[0].kind, 'search');
+  const wrongKey = await a.call('/api/memory/search', { method: 'POST', headers: { 'X-Admin-Key': 'nope' }, body: JSON.stringify({ question: '웃은 날', mode: 'example', today }) });
+  assert.equal(wrongKey.body.trace, undefined);
   const mine = await a.call('/api/memory/search', { method: 'POST', body: JSON.stringify({ question: '웃은 날', mode: 'mine', today }) });
   assert.equal(mine.body.status, 'no_records'); // 기록이 없으면 AI를 부르지 않음
-  assert.equal(mine.body.sentToAi.length, 0);
+  assert.equal(mine.body.sentToAi, undefined);
 });
 
 test('삭제: 내 일기·소원만 지울 수 있고, 일기를 지우면 영상도 열리지 않는다', async () => {

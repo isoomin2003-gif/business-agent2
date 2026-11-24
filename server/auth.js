@@ -58,6 +58,12 @@ export function parseCookieHeader(header = '') {
   return out;
 }
 
+/** 시연 키가 맞는지 (설정 안 됐으면 항상 false) */
+export function isAdminKey(key) {
+  if (!config.adminKey || !key) return false;
+  return crypto.timingSafeEqual(Buffer.from(hashToken(String(key))), Buffer.from(hashToken(config.adminKey)));
+}
+
 export function requireAdmin(req, res, next) {
   const key = req.get('x-admin-key') || '';
   if (!config.adminKey) return res.status(403).json({ error: 'admin_disabled', message: '서버에 ADMIN_KEY가 설정되지 않아 시연 기능이 꺼져 있어요.' });

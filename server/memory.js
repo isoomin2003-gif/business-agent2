@@ -1,6 +1,6 @@
 import express from 'express';
 import { getDb } from './db.js';
-import { requireUser, wrap } from './auth.js';
+import { requireUser, wrap, isAdminKey } from './auth.js';
 import { memorySearch, exampleRecords } from './rag.js';
 
 export const memoryRouter = express.Router();
@@ -32,5 +32,8 @@ memoryRouter.post('/memory/search', express.json(), wrap(async (req, res) => {
     ? exampleRecords(today)
     : (await getDb().all('SELECT id, entry_date AS date, sentence FROM diary_entries WHERE user_id = ?', [req.user.id]));
   const result = await memorySearch({ question, docs, today });
-  res.json({ mode, question, ...result });
+  // 일반 응답에는 답·관련 일기만. 검색어·AI 판단·전송 내용(trace, sentToAi)은 시연 키가 있을 때만 보냅니다.
+  const { trace, sentToAi, range, ...pub } = result;
+  if (isAdminKey(req.get('x-admin-key'))) return res.json({ mode, question, ...pub, range, trace, sentToAi, demo: true });
+  res.json({ mode, ...pub });
 }));

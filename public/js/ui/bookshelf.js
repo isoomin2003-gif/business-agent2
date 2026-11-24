@@ -5,7 +5,8 @@ import { openModal } from './modal.js';
 
 const SPINE = ['#e06c75', '#61afef', '#98c379', '#e5c07b', '#c678dd', '#56b6c2', '#ff9b6b', '#d19a66'];
 const shortDate = (d) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8, 10))}일`;
-const isDemo = () => store.get('haruDemoMode', false) === true;
+// 시연 모드: /demo에서 시연 키를 확인한 브라우저에만 켜짐. 서버도 키가 맞을 때만 검색 과정을 돌려줌
+const demoKey = () => { try { return localStorage.getItem('haruDemoKey') || ''; } catch { return ''; } };
 
 /** 시연 모드 전용: 서버가 실제로 실행한 단계(trace)를 그대로 풀어 씀 */
 function traceHtml(r) {
@@ -109,7 +110,7 @@ export async function openBookshelf({ onOpenMonth, onOpenExample, startMode = 'm
     const out = $('#m-result');
     let html = '';
     if (r.status === 'ok') {
-      html = `<p class="answer">${esc(r.answer)}</p>${r.sources.map(card).join('')}`;
+      html = `<p class="answer">${esc(r.answer)}</p>${r.sources.length ? `<p class="muted cards-label">관련 일기</p>${r.sources.map(card).join('')}` : ''}`;
     } else if (r.status === 'not_found') {
       html = `<p class="answer">관련된 기록을 찾지 못했어요.</p>
         <p class="muted hint-line">다른 단서로 다시 물어봐 주세요. 그날 함께한 사람, 장소, 날씨처럼 일기에 적었을 법한 말을 넣으면 찾기 쉬워요.</p>`;
@@ -117,11 +118,11 @@ export async function openBookshelf({ onOpenMonth, onOpenExample, startMode = 'm
       const found = r.candidates || [];
       html = `<p class="answer">지금은 AI에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.</p>
         <button class="btn btn-small" id="m-retry">다시 시도</button>
-        ${found.length ? `<p class="muted hint-line">찾아 둔 일기는 바로 열어볼 수 있어요.</p>${found.map(card).join('')}` : ''}`;
+        ${found.length ? `<p class="muted cards-label">관련 일기</p>${found.map(card).join('')}` : ''}`;
     } else {
       html = `<p class="answer">${esc(r.message)}</p>`; // 기록 없음 / 그 기간에 기록 없음
     }
-    if (isDemo() && r.trace) html += traceHtml(r);
+    if (r.demo && r.trace) html += traceHtml(r);
     out.innerHTML = `<div class="result" data-status="${r.status}">${html}</div>`;
     out.querySelector('#m-retry')?.addEventListener('click', ask);
     out.querySelectorAll('.memory-card').forEach((b) => b.addEventListener('click', () => {
@@ -139,7 +140,8 @@ export async function openBookshelf({ onOpenMonth, onOpenExample, startMode = 'm
     const out = $('#m-result');
     out.innerHTML = '<div class="result searching"><span class="dots"></span> 일기를 찾고 있어요…</div>';
     try {
-      render(await api('/api/memory/search', { method: 'POST', body: { question: q, mode, today: localToday() } }));
+      const k = demoKey();
+      render(await api('/api/memory/search', { method: 'POST', body: { question: q, mode, today: localToday() }, headers: k ? { 'X-Admin-Key': k } : undefined }));
     } catch (e) {
       out.innerHTML = `<div class="result" data-status="error"><p class="answer">${e.status === 429 ? '질문이 너무 잦아요.' : '지금은 기억 찾기를 할 수 없어요.'} 잠시 후 다시 시도해 주세요.</p>
         <button class="btn btn-small" id="m-retry">다시 시도</button></div>`;
