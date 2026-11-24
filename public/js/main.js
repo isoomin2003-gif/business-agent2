@@ -45,11 +45,12 @@ function drawLanding() {
 
 async function boot() {
   drawLanding();
+  // 느린 연결에서도 바로 누를 수 있도록 이전 세션 확인보다 먼저 연결
+  $('#start-btn').addEventListener('click', start);
   try {
     const { user: u } = await api('/api/me');
-    if (u) $('#start-btn').textContent = `내 방으로 들어가기 · ${u.nickname}`;
+    if (u && !user) $('#start-btn').textContent = `내 방으로 들어가기 · ${u.nickname}`;
   } catch { /* 첫 방문 */ }
-  $('#start-btn').addEventListener('click', start);
 }
 
 async function start() {
