@@ -3,7 +3,8 @@ import { Server } from 'socket.io';
 import { PLACES, OUTDOOR, routeTo, positionAt } from '../public/js/shared/places.js';
 import { COOKIE, parseCookieHeader, userFromToken } from './auth.js';
 import { createRadio } from './radio.js';
-import { recommend } from './dj.js';
+import { discover } from './discover.js';
+import { getTrack, addedIds, registerTrack, licenseLabel } from './library.js';
 import { isAdminKey } from './auth.js';
 import { config } from './config.js';
 
@@ -120,6 +121,13 @@ export function notifyUser(userId, event, data) {
 
 export function getRadio() { return radio; }
 
+// 같은 곡을 동시에 등록하려 해도 DB에는 한 번만
+const registering = new Map();
+function registerOnce(c, nickname) {
+  if (!registering.has(c.id)) registering.set(c.id, registerTrack(c, nickname).finally(() => registering.delete(c.id)));
+  return registering.get(c.id);
+}
+
 export function setupRealtime(server) {
   io = new Server(server, { cors: { origin: false }, maxHttpBufferSize: 1e4 });
   radio = createRadio((kind) => {
@@ -201,25 +209,40 @@ export function setupRealtime(server) {
       cb?.({ ok: true });
     });
 
-    // AI DJ 추천: 요청한 사람에게만 응답(ack). 공용 대기열은 건드리지 않음 — 신청은 radio:request로 따로
-    let djTimes = [];
-    socket.on('dj:recommend', async (data, cb) => {
+    // 새 노래 추천받기: 요청한 사람에게만 응답(ack). 공용 대기열·재생은 건드리지 않음 — 신청은 radio:request로 따로
+    let discoverTimes = [];
+    const shown = new Map(); // 이 사람에게 보여 준 외부 후보 (신청할 때 이 목록에 있는 곡만 받음 → 임의 주소 신청 불가)
+    socket.on('radio:discover', async (data, cb) => {
       if (typeof cb !== 'function') return;
       if (socket.data.place !== 'rooftop') return cb({ ok: false, message: '옥상 라디오에서만 추천받을 수 있어요.' });
       const text = String(data?.text ?? '').replace(/\s+/g, ' ').trim();
-      if (!text) return cb({ ok: false, message: '지금 기분이나 상황을 적어 주세요.' });
+      if (!text) return cb({ ok: false, message: '원하는 분위기나 악기를 적어 주세요.' });
       const now = Date.now();
-      djTimes = djTimes.filter((t) => now - t < 60000);
-      if (djTimes.length >= 8) return cb({ ok: false, message: '잠시 후 다시 물어봐 주세요.' });
-      djTimes.push(now);
-      const r = await recommend(text);
-      const demo = isAdminKey(data?.demoKey);
-      cb({ ok: true, status: r.status, track: r.track || null, reason: r.reason || '', ...(demo ? { trace: r.trace, demo: true } : {}) });
+      discoverTimes = discoverTimes.filter((t) => now - t < 60000);
+      if (discoverTimes.length >= 6) return cb({ ok: false, message: '잠시 후 다시 추천받아 주세요.' });
+      discoverTimes.push(now);
+      // 제외: 라디오에 이미 추가된 곡 + 지금 재생·대기 중인 곡 + (다른 곡 보기) 이번에 보여 준 곡
+      const exclude = new Set([...addedIds(), ...radio.activeIds(), ...(data?.more ? shown.keys() : [])]);
+      const r = await discover(text, exclude);
+      r.picks.forEach((c) => shown.set(c.id, c));
+      const pub = r.picks.map((c) => ({
+        id: c.id, title: c.title, artist: c.artist, reason: c.reason, seconds: Math.round(c.durationMs / 1000), source: c.source, sourceUrl: c.sourceUrl,
+        license: licenseLabel(c.license, c.licenseVersion), licenseUrl: c.licenseUrl, attribution: c.attribution, needsAttribution: c.license === 'by' || c.license === 'by-sa',
+      }));
+      cb({ ok: true, status: r.status, picks: pub, ...(isAdminKey(data?.demoKey) ? { trace: r.trace, demo: true } : {}) });
     });
 
-    socket.on('radio:request', (data, cb) => {
+    socket.on('radio:request', async (data, cb) => {
       if (socket.data.place !== 'rooftop') return cb?.({ ok: false, message: '옥상 라디오에서만 신청할 수 있어요.' });
-      cb?.(radio.request(user, String(data?.trackId ?? '')));
+      const trackId = String(data?.trackId ?? '');
+      if (!getTrack(trackId)) {
+        const c = shown.get(trackId);
+        if (!c) return cb?.({ ok: false, message: '추천받은 곡만 신청할 수 있어요.' });
+        if (radio.activeIds().has(trackId)) return cb?.({ ok: false, code: 'already', message: '이미 신청된 곡이에요.' });
+        if (!radio.canRequest(user)) return cb?.(radio.request(user, trackId)); // 1인 1곡 등 규칙 메시지
+        try { await registerOnce(c, user.nickname); } catch (e) { console.error('[radio] register failed', e.message); return cb?.({ ok: false, message: '곡을 등록하지 못했어요. 잠시 후 다시 시도해 주세요.' }); }
+      }
+      cb?.(radio.request(user, trackId));
     });
 
     socket.on('disconnect', () => leavePlace(socket));

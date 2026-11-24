@@ -25,25 +25,18 @@ export function decide(userContent) {
   return { action: 'not_found' };
 }
 
-// AI DJ(도구 호출) 흉내: 요청 → search_tracks 호출 → 결과가 요청의 핵심에 맞으면 고르고, 아니면 조건을 줄여 한 번 더, 그래도 없으면 null
-const DJ_RULES = [
-  { when: /밤.*산책|산책.*밤/, first: { scenes: ['밤'], moods: ['따뜻한', '평화로운', '아늑한'], avoid_moods: ['쓸쓸한'] }, second: { scenes: ['밤'], avoid_moods: ['쓸쓸한'] },
-    fits: (t) => t.scenes.includes('밤') && !t.moods.includes('쓸쓸한') },
-  { when: /고토/, first: { instruments: ['고토'], tempo: '느림' }, second: { instruments: ['고토'] },
-    fits: (t, round) => t.instruments.includes('고토') && (round === 2 || t.tempo === '느림') },
-  { when: /메탈|헤비/, first: { moods: ['신나는'], tempo: '빠름' }, second: { moods: ['신나는'] }, fits: () => false },
-];
-export function djTurn(messages) {
+// 새 노래 추천(도구 호출) 흉내: 요청 → search_music → 결과에서 최대 3곡 선택(이유 포함), 0곡이면 검색어를 바꿔 1회 더, 그래도 없으면 빈 목록
+export function discoverTurn(messages) {
   const text = messages.find((m) => m.role === 'user').content;
-  const rule = DJ_RULES.find((r) => r.when.test(text)) || { first: { moods: ['편안한'] }, second: { moods: ['차분한'] }, fits: () => true };
   const toolMsgs = messages.filter((m) => m.role === 'tool');
-  const call = (args, n) => ({ role: 'assistant', content: '', tool_calls: [{ id: `call_${n}`, type: 'function', function: { name: 'search_tracks', arguments: JSON.stringify(args) } }] });
-  if (!toolMsgs.length) return call(rule.first, 1);
+  const call = (query, n) => ({ role: 'assistant', content: '', tool_calls: [{ id: `call_${n}`, type: 'function', function: { name: 'search_music', arguments: JSON.stringify({ query }) } }] });
+  if (!toolMsgs.length) return call(/없는|zzz/.test(text) ? 'zzz nothing' : 'rain night calm guitar', 1);
   const last = JSON.parse(toolMsgs[toolMsgs.length - 1].content);
-  const hit = (last.results || []).find((t) => rule.fits(t, toolMsgs.length));
-  if (hit) return { role: 'assistant', content: JSON.stringify({ track_id: hit.id, reason: `${hit.moods.slice(0, 2).join('·')} 분위기의 곡이라 요청에 어울려요.` }) };
-  if (toolMsgs.length < 2) return call(rule.second, 2);
-  return { role: 'assistant', content: JSON.stringify({ track_id: null, reason: '조건을 바꿔도 맞는 곡이 없어요.' }) };
+  const results = last.results || [];
+  if (!results.length && toolMsgs.length < 2) return call(/없는|zzz/.test(text) ? 'nothing still' : 'soft guitar', 2);
+  // 'ov:made-up' 처럼 후보에 없는 id를 하나 섞어 서버가 걸러내는지 확인
+  const picks = [{ id: 'ov:made-up', reason: '지어낸 곡' }, ...results.slice(0, 4).map((r) => ({ id: r.id, reason: `${(r.tags || []).slice(0, 2).join('·')} 태그라 요청에 어울려요.` }))];
+  return { role: 'assistant', content: JSON.stringify({ picks }) };
 }
 
 export function startMockOpenRouter(port = 0, logFile) {
@@ -55,7 +48,7 @@ export function startMockOpenRouter(port = 0, logFile) {
       if (logFile) fs.appendFileSync(logFile, JSON.stringify({ url: req.url, auth: req.headers.authorization ? 'present' : 'missing', body: parsed }) + '\n');
       if (req.url.startsWith('/fail')) { res.writeHead(503, { 'Content-Type': 'application/json' }); return res.end('{"error":{"message":"mock outage"}}'); }
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      if (parsed.tools) return res.end(JSON.stringify({ model: 'mock/dj', choices: [{ message: djTurn(parsed.messages) }] }));
+      if (parsed.tools) return res.end(JSON.stringify({ model: 'mock/discover', choices: [{ message: discoverTurn(parsed.messages) }] }));
       const user = parsed.messages.find((m) => m.role === 'user').content;
       res.end(JSON.stringify({ model: 'mock/agent', choices: [{ message: { role: 'assistant', content: JSON.stringify(decide(user)) } }] }));
     });

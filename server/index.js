@@ -10,10 +10,13 @@ import { memoryRouter } from './memory.js';
 import { wishRouter } from './wishes.js';
 import { setupRealtime, counts, fireStar, getRadio, renameLive } from './realtime.js';
 import { TRACKS } from './tracks.js';
+import { loadLibrary, addedTracks } from './library.js';
 import { OUTDOOR } from '../public/js/shared/places.js';
 
 const db = await initDb();
 const storage = await initStorage();
+const libCount = await loadLibrary(); // 신청되어 라디오에 추가된 곡
+console.log(`[radio] 추가된 곡 ${libCount}개 불러옴`);
 
 const app = express();
 app.disable('x-powered-by');
@@ -57,7 +60,7 @@ app.post('/api/guest', express.json(), wrap(async (req, res) => {
 }));
 
 app.get('/api/places', (req, res) => res.json({ counts: counts() }));
-app.get('/api/radio/tracks', (req, res) => res.json({ tracks: TRACKS }));
+app.get('/api/radio/tracks', (req, res) => res.json({ tracks: TRACKS, added: addedTracks(), features: { compose: false } }));
 app.get('/api/samples', (req, res) => res.json({ samples: Object.entries(SAMPLE_VIDEOS).map(([id, s]) => ({ id, title: s.title, poster: s.poster })) }));
 // 어떤 저장 방식이 쓰이는지(값이나 주소는 노출하지 않음)
 const STARTED_AT = new Date().toISOString();

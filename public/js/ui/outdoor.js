@@ -25,108 +25,143 @@ export function openPlaces({ counts, onChoose }) {
 }
 
 // ───────── 라디오 ─────────
-let tracksCache = null;
+let radioInfo = null;
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const demoKeyOf = () => { try { return localStorage.getItem('haruDemoKey') || ''; } catch { return ''; } };
+
+/** 외부 곡의 라이선스·저작자 표시 한 줄 */
+function creditLine(t) {
+  if (!t.external && !t.needsAttribution) return '';
+  const lic = t.licenseUrl ? `<a href="${esc(t.licenseUrl)}" target="_blank" rel="noopener">${esc(t.license)}</a>` : esc(t.license);
+  const src = t.sourceUrl ? ` · <a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">원본</a>` : '';
+  return `<div class="credit">${t.needsAttribution ? `${esc(t.title)} — ${esc(t.artist)} · ` : ''}${lic}${src}</div>`;
+}
 
 export async function openRadio({ getState, myUserId }) {
-  if (!tracksCache) tracksCache = (await api('/api/radio/tracks')).tracks;
+  radioInfo = await api('/api/radio/tracks');
+  const compose = !!radioInfo.features?.compose; // 작곡 서비스가 연결되어 실제로 쓸 수 있을 때만 공개
   let cleanup = () => {};
   const m = openModal({
     onClose: () => cleanup(),
     title: '📻 옥상 라디오', label: '라디오',
-    html: `<div class="tabs"><button class="tab on" data-tab="now">지금 나오는 곡</button><button class="tab" data-tab="dj">🎧 AI DJ</button><button class="tab" data-tab="req">다음 곡 신청하기</button><button class="tab" data-tab="info">음원 정보</button></div>
-      <div data-pane="now"></div>
-      <div data-pane="dj" hidden>
-        <form class="row" id="dj-form" autocomplete="off">
-          <input type="text" id="dj-q" maxlength="120" style="flex:1;min-width:200px" placeholder="밤에 산책할 때 들을 곡인데 너무 쓸쓸하지 않았으면 좋겠어" aria-label="AI DJ에게 요청">
-          <button class="btn btn-primary" id="dj-go">추천받기</button>
-        </form>
-        <p class="ai-note">지금 기분이나 상황을 말하면 AI DJ가 라디오 곡 중에서 골라 줘요. 추천은 나에게만 보이고, 신청하기를 눌러야 대기열에 들어가요.</p>
-        <div id="dj-out" aria-live="polite"></div>
+    html: `<div id="r-now"></div>
+      <div class="radio-choices">
+        <button class="choice-card on" data-go="discover"><b>🎵 새 노래 추천받기</b><span>원하는 분위기를 말하면 라디오에 없는 곡을 찾아 줘요</span></button>
+        ${compose ? '<button class="choice-card" data-go="compose"><b>🎹 오늘의 단어로 작곡하기</b><span>짧은 문장이나 단어로 새 연주곡을 만들어요</span></button>' : ''}
       </div>
-      <div data-pane="req" hidden></div><div data-pane="info" hidden></div>`,
+      <div data-pane="discover">
+        <form class="row" id="dc-form" autocomplete="off">
+          <input type="text" id="dc-q" maxlength="120" style="flex:1;min-width:200px" placeholder="비 오는 밤에 어울리는 잔잔한 기타곡" aria-label="원하는 분위기">
+          <button class="btn btn-primary" id="dc-go">추천받기</button>
+        </form>
+        <p class="ai-note">추천은 나에게만 보여요. 곡 옆의 신청을 눌러야 옥상 대기열에 들어가요.</p>
+        <div id="dc-out" aria-live="polite"></div>
+      </div>
+      ${compose ? '<div data-pane="compose" hidden></div>' : ''}
+      <div class="radio-links"><button class="link-btn" data-go="queue">기본 선곡표에서 신청</button> · <button class="link-btn" data-go="info">음원 정보</button></div>
+      <div data-pane="queue" hidden></div><div data-pane="info" hidden></div>`,
   });
-  const show = (tab) => {
-    m.$$('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
-    m.$$('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== tab; });
+  const show = (pane) => {
+    m.$$('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== pane; });
+    m.$$('.choice-card').forEach((c) => c.classList.toggle('on', c.dataset.go === pane));
   };
-  m.$$('.tab').forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
+  m.$$('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go)));
 
-  const render = () => {
+  // ── 지금 나오는 곡 + 다음 순서 ──
+  const renderNow = () => {
     const st = getState();
     const cur = st?.current;
-    const elapsed = cur ? Math.max(0, (net.now() - cur.startedAt) / 1000) : 0;
-    const dur = cur?.track?.durationSec || 1;
-    const myPending = st?.queue?.some((q) => q.userId === myUserId);
-    m.$('[data-pane="now"]').innerHTML = cur ? `<div class="radio-now">
-        <div class="t">♪ ${esc(cur.track.title)}</div>
-        <div class="muted">${esc(cur.track.artist)} · ${esc(cur.track.genre)}${cur.requestedBy ? ` · <b style="color:var(--accent)">${esc(cur.requestedBy)} 님의 신청곡</b>` : ' · 기본 선곡'}</div>
-        <div class="progress" style="margin-top:10px"><i style="width:${Math.min(100, elapsed / dur * 100)}%"></i></div>
-        <div class="muted" style="font-size:13px;margin-top:4px">${fmtTime(Math.min(elapsed, dur))} / ${fmtTime(dur)}</div>
-      </div>
-      <h3 style="margin:14px 0 6px;font-size:16px">다음 순서</h3>
-      ${st.queue.length ? `<ol>${st.queue.map((q) => `<li>${esc(q.title)} <span class="muted">— ${esc(q.nickname)} 님 신청</span></li>`).join('')}</ol>`
-        : '<p class="muted">대기 중인 신청곡이 없어요. 기본 선곡이 이어서 나와요.</p>'}
-      <p class="muted" style="font-size:13px">같은 옥상에 있는 모두가 같은 곡의 같은 지점을 들어요. 음량과 음소거는 나에게만 적용돼요.</p>`
-      : '<p>라디오를 준비하는 중…</p>';
-    m.$('[data-pane="req"]').innerHTML = `<p class="muted" style="font-size:14px">미리 등록한 선곡표에서만 고를 수 있어요. 지금 곡이 끝나면 접수된 순서대로 나와요. 한 사람당 대기 중인 신청은 한 곡까지예요.</p>
-      <div class="track-list">${tracksCache.map((t) => `<div class="track"><div><b>${esc(t.title)}</b><div class="muted" style="font-size:13px">${esc(t.artist)} · ${esc(t.genre)} · ${fmtTime(t.durationSec)}</div></div>
-        <button class="btn btn-small btn-primary" data-req="${t.id}" ${myPending ? 'disabled' : ''}>신청</button></div>`).join('')}</div>
-      ${myPending ? '<p class="status ok">내 신청곡이 대기 중이에요. 재생이 시작되면 다시 신청할 수 있어요.</p>' : ''}
-      <p class="status" id="r-status"></p>`;
-    m.$$('[data-req]').forEach((b) => b.addEventListener('click', async () => {
-      b.disabled = true;
-      const r = await net.emit('radio:request', { trackId: b.dataset.req });
-      if (r?.ok) { toast(`신청 완료! 대기 ${r.position}번째예요 ♪`); render(); show('now'); } else { m.$('#r-status').textContent = r?.message || '신청하지 못했어요.'; m.$('#r-status').className = 'status err'; b.disabled = false; }
-    }));
+    if (!cur?.track) { m.$('#r-now').innerHTML = '<p>라디오를 준비하는 중…</p>'; return; }
+    const elapsed = Math.max(0, (net.now() - cur.startedAt) / 1000), dur = cur.track.durationSec || 1;
+    m.$('#r-now').innerHTML = `<div class="radio-now">
+      <div class="t">♪ ${esc(cur.track.title)}</div>
+      <div class="muted">${esc(cur.track.artist)}${cur.track.genre ? ` · ${esc(cur.track.genre)}` : ''}${cur.requestedBy ? ` · <b style="color:var(--accent)">${esc(cur.requestedBy)} 님의 신청곡</b>` : ' · 기본 선곡'}</div>
+      ${creditLine(cur.track)}
+      <div class="progress" style="margin-top:8px"><i style="width:${Math.min(100, elapsed / dur * 100)}%"></i></div>
+      <div class="muted" style="font-size:13px;margin-top:4px">${fmtTime(Math.min(elapsed, dur))} / ${fmtTime(dur)}${st.queue.length ? ` · 다음: ${st.queue.map((q) => `${esc(q.title)}(${esc(q.nickname)})`).join(', ')}` : ''}</div>
+    </div>`;
   };
-  m.$('[data-pane="info"]').innerHTML = `<p class="muted" style="font-size:14px">모든 곡은 제작자가 원본 배포 페이지에서 CC0(퍼블릭 도메인)으로 공개한 녹음이에요. ★는 신청곡이 없을 때 나오는 기본 방송이에요.</p>
-    <table class="credits"><tr><th>곡</th><th>제작자</th><th>라이선스</th></tr>
-    ${tracksCache.map((t) => `<tr><td>${t.base ? '★ ' : ''}<a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${esc(t.title)}</a><div class="muted" style="font-size:12px">${esc([t.genre, ...t.moods].join(' · '))}${t.instruments.length ? ` · ${esc(t.instruments.join(', '))}` : ''}${t.bpm ? ` · ${t.bpm}BPM` : ''}</div><div class="muted" style="font-size:11px">${esc(t.note)}</div></td><td>${esc(t.artist)}</td>
-      <td><a href="${esc(t.licenseUrl)}" target="_blank" rel="noopener">${esc(t.license)}</a></td></tr>`).join('')}</table>`;
-  // ── AI DJ: 추천 카드(나에게만) → 신청하기를 눌렀을 때만 공용 대기열에 추가 ──
-  let djBusy = false;
-  const djOut = m.$('#dj-out');
-  const djTrace = (r) => (r.demo && r.trace ? `<details class="trace"><summary>추천 과정 보기 <span class="badge">시연 모드</span></summary><ol>${r.trace.map((t) => {
-    if (t.kind === 'search') return `<li><b>${t.round}차 검색</b> · 조건 <code>${esc(JSON.stringify(t.args))}</code> → <b>${t.found}곡</b>${t.ids.length ? ` (${t.ids.map(esc).join(', ')})` : ''}</li>`;
-    if (t.kind === 'pick') return `<li><b>선택</b> · <code>${esc(t.id)}</code></li>`;
-    if (t.kind === 'error') return `<li><b>연결 실패</b> · ${esc(t.status)}${t.code ? ` ${t.code}` : ''}</li>`;
-    return `<li><b>${esc(t.note || '추천 없음')}</b></li>`;
+
+  // ── 기본 선곡표에서 신청 ──
+  const renderQueue = () => {
+    const st = getState();
+    const myPending = st?.queue?.some((q) => q.userId === myUserId);
+    const queued = new Set([st?.current?.trackId, ...(st?.queue || []).map((q) => q.trackId)]);
+    m.$('[data-pane="queue"]').innerHTML = `<p class="muted" style="font-size:14px">미리 등록한 선곡표의 곡이에요. 한 사람당 대기 중인 신청은 한 곡까지예요.</p>
+      <div class="track-list">${radioInfo.tracks.map((t) => `<div class="track"><div><b>${esc(t.title)}</b><div class="muted" style="font-size:13px">${esc(t.artist)} · ${esc(t.genre)} · ${fmtTime(t.durationSec)}</div></div>
+        <button class="btn btn-small btn-primary" data-req="${t.id}" ${myPending || queued.has(t.id) ? 'disabled' : ''}>${queued.has(t.id) ? '이미 신청됨' : '신청'}</button></div>`).join('')}</div>
+      <p class="status" id="q-status"></p>`;
+    m.$$('[data-req]').forEach((b) => b.addEventListener('click', () => requestTrack(b, b.dataset.req, m.$('#q-status'))));
+  };
+
+  // ── 음원 정보 ──
+  const renderInfo = () => {
+    m.$('[data-pane="info"]').innerHTML = `<p class="muted" style="font-size:14px">★ 기본 방송과 선곡표는 제작자가 CC0으로 공개한 녹음이에요. 아래 ‘신청되어 추가된 곡’은 공개 라이선스(CC0·CC BY·CC BY-SA) 곡이고, 저작자 표시가 필요한 곡은 함께 표시해요.</p>
+      <table class="credits"><tr><th>곡</th><th>제작자</th><th>라이선스</th></tr>
+      ${radioInfo.tracks.map((t) => `<tr><td>${t.base ? '★ ' : ''}<a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${esc(t.title)}</a><div class="muted" style="font-size:12px">${esc([t.genre, ...t.moods].join(' · '))}</div></td><td>${esc(t.artist)}</td>
+        <td><a href="${esc(t.licenseUrl)}" target="_blank" rel="noopener">${esc(t.license)}</a></td></tr>`).join('')}</table>
+      ${radioInfo.added?.length ? `<h3 style="margin:14px 0 6px">신청되어 추가된 곡</h3><table class="credits"><tr><th>곡</th><th>제작자</th><th>라이선스</th></tr>
+      ${radioInfo.added.map((t) => `<tr><td><a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${esc(t.title)}</a><div class="muted" style="font-size:12px">${esc(t.attribution || '')}</div></td><td>${esc(t.artist)}</td>
+        <td>${t.licenseUrl ? `<a href="${esc(t.licenseUrl)}" target="_blank" rel="noopener">${esc(t.license)}</a>` : esc(t.license)}</td></tr>`).join('')}</table>` : ''}`;
+  };
+
+  /** 신청 버튼 공통: 서버가 등록을 확인한 뒤에만 '신청 완료' */
+  async function requestTrack(btn, trackId, statusEl) {
+    btn.disabled = true; const label = btn.textContent; btn.textContent = '신청 중…';
+    const res = await net.emit('radio:request', { trackId });
+    if (res?.ok) { btn.textContent = '신청 완료 ✓'; if (statusEl) { statusEl.textContent = `대기 ${res.position}번째예요. 지금 곡이 끝나면 순서대로 나와요.`; statusEl.className = 'status ok'; } toast(`신청 완료! 대기 ${res.position}번째예요 ♪`); }
+    else if (res?.code === 'already') { btn.textContent = '이미 신청됨'; }
+    else { btn.disabled = false; btn.textContent = label; if (statusEl) { statusEl.textContent = res?.message || '신청하지 못했어요.'; statusEl.className = 'status err'; } }
+    radioInfo = await api('/api/radio/tracks').catch(() => radioInfo);
+  }
+
+  // ── 새 노래 추천받기 ──
+  let busy = false, lastText = '';
+  const out = m.$('#dc-out');
+  const traceHtml = (r) => (r.demo && r.trace ? `<details class="trace"><summary>추천 과정 보기 <span class="badge">시연 모드</span></summary><ol>${r.trace.map((t) => {
+    if (t.kind === 'search') return `<li><b>${t.round}차 검색</b> · 검색어 <code>${esc(t.query)}</code> → <b>${t.found}곡</b></li>`;
+    if (t.kind === 'search_error') return `<li><b>${t.round}차 검색 실패</b> · ${esc(t.note)}</li>`;
+    if (t.kind === 'unplayable') return `<li>재생 확인 실패로 제외 · <code>${esc(t.id)}</code></li>`;
+    if (t.kind === 'pick') return `<li><b>선택</b> · ${t.ids.length}곡${t.dropped ? ` (후보에 없거나 중복·재생 불가로 ${t.dropped}곡 제외)` : ''}</li>`;
+    return `<li><b>연결 실패</b> · ${esc(t.status)}</li>`;
   }).join('')}</ol></details>` : '');
-  async function recommendNow() {
-    const text = m.$('#dj-q').value.trim();
-    if (!text || djBusy) return;
-    djBusy = true; m.$('#dj-go').disabled = true;
-    djOut.innerHTML = '<div class="result searching"><span class="dots"></span> 어울리는 곡을 찾고 있어요…</div>';
-    let demoKey = '';
-    try { demoKey = localStorage.getItem('haruDemoKey') || ''; } catch { /* */ }
-    const r = await net.emit('dj:recommend', { text, ...(demoKey ? { demoKey } : {}) });
-    djBusy = false; m.$('#dj-go').disabled = false;
-    if (!r?.ok) { djOut.innerHTML = `<div class="result"><p class="answer">${esc(r?.message || '지금은 추천할 수 없어요. 잠시 후 다시 시도해 주세요.')}</p></div>`; return; }
+  async function discoverNow(more = false) {
+    const text = more ? lastText : m.$('#dc-q').value.trim();
+    if (!text || busy) return;
+    busy = true; lastText = text; m.$('#dc-go').disabled = true;
+    out.innerHTML = '<div class="result searching"><span class="dots"></span> 어울리는 곡을 찾고 있어요…</div>';
+    const demoKey = demoKeyOf();
+    const r = await net.emit('radio:discover', { text, more, ...(demoKey ? { demoKey } : {}) });
+    busy = false; m.$('#dc-go').disabled = false;
+    if (!r?.ok) { out.innerHTML = `<div class="result"><p class="answer">${esc(r?.message || '지금은 추천할 수 없어요. 잠시 후 다시 시도해 주세요.')}</p></div>`; return; }
     if (r.status === 'ok') {
-      djOut.innerHTML = `<div class="result dj-card" data-status="ok">
-        <div class="dj-info"><div class="t">♪ ${esc(r.track.title)}</div><div class="muted">${esc(r.track.artist)}</div><p class="dj-reason">${esc(r.reason)}</p></div>
-        <div class="dj-act"><button class="btn btn-primary" id="dj-req" data-id="${esc(r.track.id)}">신청하기</button></div>
-        <p class="status" id="dj-status" style="grid-column:1/-1;margin:0"></p></div>${djTrace(r)}`;
-      m.$('#dj-req').addEventListener('click', async (e) => {
-        const btn = e.currentTarget;
-        btn.disabled = true; btn.textContent = '신청 중…';
-        const res = await net.emit('radio:request', { trackId: btn.dataset.id });
-        if (res?.ok) { btn.textContent = '신청 완료 ✓'; m.$('#dj-status').textContent = `대기 ${res.position}번째예요. 지금 곡이 끝나면 순서대로 나와요.`; m.$('#dj-status').className = 'status ok'; render(); }
-        else { btn.disabled = false; btn.textContent = '신청하기'; m.$('#dj-status').textContent = res?.message || '신청하지 못했어요.'; m.$('#dj-status').className = 'status err'; }
-      });
+      const st = getState();
+      const queued = new Set([st?.current?.trackId, ...(st?.queue || []).map((q) => q.trackId)]);
+      out.innerHTML = `<div class="result" data-status="ok">
+        ${r.picks.length < 3 ? `<p class="muted hint-line">조건에 맞는 곡을 ${r.picks.length}곡 찾았어요.</p>` : ''}
+        <div class="pick-list">${r.picks.map((p) => `<div class="pick">
+          <div class="pick-info"><div class="t">${esc(p.title)}</div><div class="muted">${esc(p.artist)} · ${fmtTime(p.seconds)}</div>
+            <p class="dj-reason">${esc(p.reason)}</p>${creditLine({ ...p, external: true })}</div>
+          <button class="btn btn-primary btn-small" data-pick="${esc(p.id)}" ${queued.has(p.id) ? 'disabled' : ''}>${queued.has(p.id) ? '이미 신청됨' : '신청'}</button></div>`).join('')}</div>
+        <p class="status" id="dc-status"></p>
+        <button class="btn btn-small" id="dc-more">다른 곡 보기</button></div>${traceHtml(r)}`;
+      m.$$('[data-pick]').forEach((b) => b.addEventListener('click', () => requestTrack(b, b.dataset.pick, m.$('#dc-status'))));
+      m.$('#dc-more').addEventListener('click', () => discoverNow(true));
     } else if (r.status === 'none') {
-      djOut.innerHTML = `<div class="result" data-status="none"><p class="answer">라디오 곡 중에서 딱 맞는 곡을 찾지 못했어요.</p><p class="muted hint-line">분위기나 상황을 조금 다르게 말해 주세요. 예) 차분한, 밝은, 피아노, 기타, 밤, 겨울</p></div>${djTrace(r)}`;
+      out.innerHTML = `<div class="result" data-status="none"><p class="answer">${more ? '더 보여 드릴 곡을 찾지 못했어요.' : '조건에 맞는 곡을 찾지 못했어요.'}</p>
+        <p class="muted hint-line">분위기나 악기를 바꿔 다시 검색해 보세요. 예) 잔잔한 피아노, 신나는 어쿠스틱 기타, 몽환적인 신시사이저</p></div>${traceHtml(r)}`;
+      m.$('#dc-q').focus();
     } else {
-      djOut.innerHTML = `<div class="result" data-status="error"><p class="answer">지금은 AI DJ에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.</p><button class="btn btn-small" id="dj-retry">다시 시도</button></div>${djTrace(r)}`;
-      m.$('#dj-retry').addEventListener('click', recommendNow);
+      out.innerHTML = `<div class="result" data-status="error"><p class="answer">${r.status === 'search_error' ? '지금은 음악 목록을 검색하지 못했어요.' : '지금은 추천 AI에 연결하지 못했어요.'} 잠시 후 다시 시도해 주세요.</p>
+        <button class="btn btn-small" id="dc-retry">다시 시도</button></div>${traceHtml(r)}`;
+      m.$('#dc-retry').addEventListener('click', () => discoverNow(more));
     }
   }
-  m.$('#dj-form').addEventListener('submit', (e) => { e.preventDefault(); recommendNow(); });
+  m.$('#dc-form').addEventListener('submit', (e) => { e.preventDefault(); discoverNow(false); });
 
-  render();
-  const timer = setInterval(() => { if (!m.$('[data-pane="now"]').hidden) render(); }, 1000);
-  const off = net.on('radio', () => render());
+  renderNow(); renderQueue(); renderInfo();
+  const timer = setInterval(renderNow, 1000);
+  const off = net.on('radio', () => { renderNow(); if (!m.$('[data-pane="queue"]').hidden) renderQueue(); });
   cleanup = () => { clearInterval(timer); off(); };
   return m;
 }
