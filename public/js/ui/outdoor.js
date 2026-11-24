@@ -131,7 +131,8 @@ export async function openRadio({ getState, myUserId }) {
     busy = true; lastText = text; m.$('#dc-go').disabled = true;
     out.innerHTML = '<div class="result searching"><span class="dots"></span> 어울리는 곡을 찾고 있어요…</div>';
     const demoKey = demoKeyOf();
-    const r = await net.emit('radio:discover', { text, more, ...(demoKey ? { demoKey } : {}) });
+    // AI 판단 + 음악 검색 + 재생 확인까지 걸리므로 넉넉히 기다림
+    const r = await net.emit('radio:discover', { text, more, ...(demoKey ? { demoKey } : {}) }, { timeout: 60000 });
     busy = false; m.$('#dc-go').disabled = false;
     if (!r?.ok) { out.innerHTML = `<div class="result"><p class="answer">${esc(r?.message || '지금은 추천할 수 없어요. 잠시 후 다시 시도해 주세요.')}</p></div>`; return; }
     if (r.status === 'ok') {

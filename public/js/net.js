@@ -12,10 +12,10 @@ export function on(ev, fn) {
   return () => { listeners.get(ev).delete(fn); socket?.off(ev, fn); };
 }
 
-export function emit(ev, data) {
+export function emit(ev, data, { timeout = 6000 } = {}) {
   return new Promise((resolve) => {
     if (!socket?.connected) return resolve({ ok: false, message: '서버와 연결이 끊겼어요. 잠시 후 다시 시도해 주세요.' });
-    const t = setTimeout(() => resolve({ ok: false, message: '서버 응답이 없어요.' }), 6000);
+    const t = setTimeout(() => resolve({ ok: false, message: '서버 응답이 없어요. 잠시 후 다시 시도해 주세요.' }), timeout);
     socket.emit(ev, data, (res) => { clearTimeout(t); resolve(res); });
   });
 }
