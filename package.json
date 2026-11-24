@@ -7,7 +7,7 @@
     "start": "node --no-warnings=ExperimentalWarning server/index.js",
     "dev": "node --watch --no-warnings=ExperimentalWarning server/index.js",
     "migrate": "node --no-warnings=ExperimentalWarning server/migrate.js",
-    "test": "node --no-warnings=ExperimentalWarning --test test/"
+    "test": "node --no-warnings=ExperimentalWarning --test test/*.test.js"
   },
   "license": "MIT",
   "dependencies": {

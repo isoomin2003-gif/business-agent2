@@ -33,9 +33,13 @@ export class Stage {
 
   resize() {
     const hud = 56, bottom = 76;
-    const availW = Math.min(window.innerWidth - 24, 1280);
-    const availH = window.innerHeight - hud - bottom - 24;
-    const w = Math.max(280, Math.min(availW, Math.floor(availH * 16 / 9)));
+    const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || Infinity, window.visualViewport?.width || Infinity);
+    const vh = window.visualViewport?.height || window.innerHeight;
+    const mobile = vw < 640;
+    const availW = Math.min(vw - (mobile ? 16 : 24), 1280);
+    const availH = vh - hud - bottom - 24;
+    // 세로 화면(모바일)에서는 가로폭을 꽉 채우고, PC에서는 화면 높이에 맞춥니다.
+    const w = Math.floor(Math.max(Math.min(280, availW), mobile ? availW : Math.min(availW, Math.floor(availH * 16 / 9))));
     document.documentElement.style.setProperty('--stage-w', `${w}px`);
     this.scale = w / W;
   }
@@ -184,7 +188,7 @@ export class Stage {
       const p = this.pos(e);
       const seated = !p.moving && e.seat;
       const footY = seated ? p.y + 2 : p.y;
-      e.tag.style.left = `${p.x * k}px`;
+      e.tag.style.left = `${Math.min(Math.max(p.x * k, 50), 320 * k - 50)}px`;
       e.tag.style.top = `${(footY + 2) * k}px`;
       if (e.bubble) {
         const headTop = footY - (seated ? 15 : 18) - (e.wish && e.wish.until > Date.now() ? 12 : 2);

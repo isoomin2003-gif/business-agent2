@@ -6,7 +6,7 @@ import { isUserIn, getStar, floatWish, notifyUser } from './realtime.js';
 
 export const WISH_MAX = 80;
 export const wishRouter = express.Router();
-wishRouter.use(requireUser, express.json());
+wishRouter.use('/wishes', requireUser, express.json());
 
 function wishJson(w, userId) {
   const db = openDb();

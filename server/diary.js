@@ -68,7 +68,7 @@ const entryJson = (r) => ({
 });
 
 export const diaryRouter = express.Router();
-diaryRouter.use(requireUser);
+diaryRouter.use(['/videos', '/diary'], requireUser);
 
 // 영상 업로드(개인 저장소). 저장 전 단계이므로 문장은 클라이언트에 그대로 남아 있습니다.
 diaryRouter.post('/videos', (req, res) => {

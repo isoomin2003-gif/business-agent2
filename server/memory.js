@@ -4,7 +4,7 @@ import { requireUser } from './auth.js';
 import { retrieve, generateAnswer, buildPayload, exampleRecords } from './rag.js';
 
 export const memoryRouter = express.Router();
-memoryRouter.use(requireUser);
+memoryRouter.use('/memory', requireUser);
 
 const hits = new Map(); // 사용자별 간단한 속도 제한 (분당 12회)
 function rateLimited(userId) {
