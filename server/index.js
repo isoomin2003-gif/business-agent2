@@ -85,6 +85,15 @@ app.post('/api/admin/radio/fast-forward', requireAdmin, express.json(), (req, re
   res.json({ ok: true, radio: getRadio().snapshot() });
 });
 app.get('/api/admin/check', requireAdmin, (req, res) => res.json({ ok: true }));
+// TEMP-DIAG (확인 후 삭제)
+app.get('/api/diag-3f0e2d585c507ca31bcc02dc', async (req, res) => {
+  const { discover } = await import('./discover.js');
+  const { addedIds } = await import('./library.js');
+  const exclude = new Set([...addedIds(), ...getRadio().activeIds()]);
+  const runs = [];
+  for (let i = 0; i < 3; i++) { const r = await discover('비 오는 밤에 어울리는 잔잔한 기타곡', exclude); runs.push({ status: r.status, picks: r.picks.map((p) => p.title), trace: r.trace }); }
+  res.json({ excludeSize: exclude.size, runs });
+});
 // 페이지·JS·CSS는 매번 서버에 새 버전이 있는지 확인(no-cache + ETag)해서, 배포 직후에도 옛 화면이 남지 않게 합니다.
 // 음원·샘플 영상·이미지는 바뀌지 않으므로 하루 동안 캐시합니다.
 app.use(express.static(PATHS.public, {
