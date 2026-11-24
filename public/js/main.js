@@ -17,8 +17,8 @@ import * as amb from './audio/ambience.js';
 const SCENES = { room, rooftop, park };
 const HINTS = {
   room: '빈 바닥을 누르면 그곳으로 걸어가요 · 책상: 다이어리 쓰기 · 책장: 지난 기록과 기억 찾기 · 문: 밖으로 나가기',
-  rooftop: '바닥을 누르면 그곳으로 걸어가고, 벤치의 빈자리를 누르면 앉아요. 라디오를 누르면 지금 곡·신청·음원 정보를 볼 수 있어요.',
-  park: '산책로나 잔디를 누르면 걸어가요. 벤치에 앉으면 풀벌레와 바람 소리가 들려요. 소원 나무를 눌러 소원을 읽고 걸 수 있어요.',
+  rooftop: '바닥을 누르면 그곳으로 걸어가고, 벤치의 빈자리를 누르면 앉아요. 라디오를 누르면 곡 정보·신청, 오른쪽 계단실 문을 누르면 내 방으로 돌아가요.',
+  park: '산책로나 잔디를 누르면 걸어가요. 벤치에 앉으면 풀벌레와 바람 소리가 들려요. 소원 나무를 누르면 소원을, 오른쪽 산책로 입구를 누르면 내 방으로 돌아가요.',
 };
 const $ = (s) => document.querySelector(s);
 
@@ -89,7 +89,6 @@ async function fade(fn) {
 
 function setHud() {
   $('#hud-place').textContent = PLACES[place].name;
-  $('#home-btn').hidden = place === 'room';
   $('#my-wishes-btn').hidden = place === 'room';
   $('#chat-form').hidden = place !== 'rooftop';
   $('#hint').textContent = HINTS[place];
@@ -206,8 +205,32 @@ async function goHome() {
   });
 }
 
+/** 야외에서 새 행동(바닥·자리·라디오·나무·출입구 클릭)이 생길 때마다 증가 → 걷던 귀가 동작은 취소됨 */
+let outdoorIntent = 0;
+const newIntent = () => ++outdoorIntent;
+
+/** 계단실 문 / 산책로 입구: 그곳까지 걸어간 뒤 내 방으로. 도착 전에 다른 곳을 누르면 취소 */
+async function walkHome() {
+  const token = newIntent();
+  const from = place;
+  const target = PLACES[from].targets.exit;
+  const r = await net.emit('move', target);
+  if (!r?.ok) { if (r?.message) toast(r.message); return; }
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    await new Promise((res) => setTimeout(res, 100));
+    if (token !== outdoorIntent || place !== from) return; // 다른 곳을 눌러 귀가 취소
+    const e = stage.entities.get(mySid);
+    if (!e) return;
+    const p = stage.pos(e);
+    const end = e.points[e.points.length - 1];
+    if (!p.moving && Math.hypot(end.x - target.x, end.y - target.y) <= 3) return goHome();
+  }
+}
+
 function onOutdoorHotspot(id) {
-  if (id === 'exit') return goHome();
+  if (id === 'exit') return walkHome();
+  newIntent();
   if (id === 'radio') { net.emit('move', PLACES.rooftop.targets.radio); openRadio({ getState: radio.getState, myUserId: user.id }); }
   if (id === 'tree') { net.emit('move', PLACES.park.targets.tree); openTree({ onPosted: (n) => place === 'park' && stage.renderBackground({ treeCount: n }) }); }
 }
@@ -238,11 +261,13 @@ function bindStage() {
   // 빈 바닥: 방에서는 혼자 걷고, 옥상·공원에서는 서버가 경로를 정해 모든 화면에 같은 움직임을 보냄
   stage.on('floor', async (_id, hit) => {
     if (place === 'room') return walkLocal({ x: hit.x, y: hit.y });
+    newIntent();
     const r = await net.emit('move', { x: hit.x, y: hit.y });
     if (r && !r.ok && r.message) toast(r.message);
   });
   stage.on('seat', async (id) => {
     if (place === 'room') return;
+    newIntent();
     const r = await net.emit('sit', { seat: id });
     if (!r?.ok && r?.message) toast(r.message);
   });
@@ -270,7 +295,6 @@ function onReconnect() {
 }
 
 function bindHud() {
-  $('#home-btn').addEventListener('click', goHome);
   $('#my-wishes-btn').addEventListener('click', openMyWishes);
   const seg = new Intl.Segmenter('ko', { granularity: 'grapheme' });
   const len = (s) => [...seg.segment(s)].length;

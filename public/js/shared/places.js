@@ -24,7 +24,7 @@ export const PLACES = {
     name: '옥상',
     desc: '네온빛 야경 아래 벤치와 라디오. 짧게 이야기하거나 같은 음악을 들어요.',
     spawn: { x: 292, y: 154 },
-    targets: { radio: { x: 250, y: 150 } },
+    targets: { radio: { x: 250, y: 150 }, exit: { x: 296, y: 152 } }, // exit: 계단실 문 앞
     walk: {
       band: { x0: 4, x1: 316, y0: 116, y1: 176 },
       obstacles: [
@@ -44,7 +44,7 @@ export const PLACES = {
     name: '공원',
     desc: '풀벌레 소리가 들리는 밤 산책길. 말없이 함께 쉬거나 소원 나무에 소원을 걸어요.',
     spawn: { x: 310, y: 162 },
-    targets: { tree: { x: 82, y: 164 } },
+    targets: { tree: { x: 82, y: 164 }, exit: { x: 310, y: 162 } }, // exit: 산책로 입구
     walk: {
       band: { x0: 4, x1: 316, y0: 106, y1: 176 },
       obstacles: [
