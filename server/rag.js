@@ -1,10 +1,16 @@
-// '기억 찾기' — RAG(검색 → 근거 전달 → 답변 생성)
-// 1) Retrieval: 사용자의 일기만 대상으로, 날짜 조건을 먼저 적용한 뒤 한국어 문자 n-gram BM25로 최대 3개 검색 (서버 안에서만 수행)
-// 2) Augmentation: 질문 + 검색된 일기의 날짜·문장만 OpenRouter로 전송 (영상·영상 주소·닉네임·계정 정보 제외)
-// 3) Generation: 근거에 기반한 한국어 한두 문장 답변
+// '기억 찾기' — 검색 결과를 보고 AI가 다음 행동을 고르는 RAG (최대 2회 검색)
+//
+//   1차 검색(Retrieval)  : 본인 일기 중 질문의 기간(이번 달·지난달 등) 안에서, 질문의 낱말로 한국어 문자 n-gram BM25 검색 (최대 3개)
+//   AI 판단(Augmentation): 질문 + 검색된 일기의 '날짜·문장'만 OpenRouter로 보내고, AI가 JSON으로 행동을 고름
+//                           answer(근거 충분) / retry(질문 뜻을 유지한 다른 단서로 재검색) / not_found
+//   2차 검색             : AI가 고른 단서로, '같은 기간' 안에서 다시 검색
+//   최종 판단(Generation): 2차 결과(+1차 결과)를 보고 answer 또는 not_found. 답변은 실제 문장에만 근거하고 영상 내용은 추측하지 않음
+//
+// 영상 파일·영상 주소·닉네임·계정 정보·기록 ID는 외부로 보내지 않습니다.
 import { config } from './config.js';
 
 export const TOP_K = 3;
+export const MAX_KEYWORDS = 4;
 
 // ───────────── 날짜 조건 ─────────────
 const pad = (n) => String(n).padStart(2, '0');
@@ -39,25 +45,13 @@ export function parseDateRange(question, today) {
 // ───────────── 토큰화 ─────────────
 const STOP = new Set(['언제', '언제야', '언제였지', '언제지', '날', '날이', '날은', '날을', '때', '무엇', '뭐', '뭘', '뭐였지', '어떤', '어디',
   '기록', '일기', '나', '내가', '내', '제가', '저', '그', '이', '있었', '있었지', '있었던', '했지', '였지', '이었지', '알려줘', '찾아줘', '줘', '좀',
-  '에', '에서', '은', '는', '이랑', '랑', '하고', '적', '있어', '있나', '있었나', '했던', '거', '것', '몇', '일', '며칠']);
+  '에', '에서', '은', '는', '이랑', '랑', '하고', '적', '있어', '있나', '있었나', '했던', '거', '것', '게', '건', '몇', '일', '며칠']);
 const SUFFIXES = ['이었던', '었었던', '했었던', '이랑', '하고', '에서', '에게', '한테', '으로', '었던', '았던', '였던', '했던', '었지', '았지', '였지', '했지',
   '었다', '았다', '였다', '했다', '이었', '랑', '과', '와', '을', '를', '은', '는', '이', '가', '도', '의', '에', '로', '던', '지', '다', '고', '며', '서', '들'];
-const SYNONYMS = {
-  웃: ['웃', '재밌', '재미', '즐거', '신나', '행복', '깔깔'],
-  재밌: ['재밌', '재미', '웃', '즐거', '신나'],
-  친구: ['친구', '동기', '동아리', '선배', '후배', '같이'],
-  비: ['비', '우산', '장마', '빗'],
-  산책: ['산책', '걷', '걸었', '걸으'],
-  노을: ['노을', '해질', '석양', '저녁놀'],
-  슬프: ['슬프', '슬펐', '울', '우울', '속상'],
-  맛있: ['맛있', '먹', '밥', '카페'],
-  먹: ['먹', '맛있', '밥', '식당'],
-};
-
-const clean = (s) => s.normalize('NFC').toLowerCase().replace(/[^0-9a-z가-힣\s]/g, ' ');
-
 const ONE_CHAR_NOUNS = new Set(['비', '눈', '밤', '꿈', '잠', '밥', '책', '별', '달', '해', '산', '강', '차', '집', '옷', '빵', '술', '춤', '글', '시', '봄', '빛', '숲', '물']);
 const REQUEST_VERB = /^(보여|알려|찾아|말해|정리|요약|궁금|기억나)/;
+
+const clean = (s) => s.normalize('NFC').toLowerCase().replace(/[^0-9a-z가-힣\s]/g, ' ');
 
 function stem(word) {
   let w = word;
@@ -72,21 +66,19 @@ function stem(word) {
   return w;
 }
 
-/** 질문 → [{token, weight}] (어간의 문자 2-gram, 1글자 어간은 1-gram, 동의어 확장은 가중치 0.6) */
+/** 검색 문장(또는 AI가 고른 단서) → 실제로 쓴 검색어(어간)와 n-gram 토큰 */
 export function queryTerms(text) {
-  const out = new Map();
-  const add = (tok, w) => out.set(tok, Math.max(out.get(tok) || 0, w));
+  const words = [];
+  const grams = new Set();
   for (const raw of clean(text).split(/\s+/).filter(Boolean)) {
     if (STOP.has(raw) || REQUEST_VERB.test(raw)) continue;
     const s = stem(raw);
     if (!s || STOP.has(s)) continue;
-    const grams = s.length === 1 ? [s] : Array.from({ length: s.length - 1 }, (_, i) => s.slice(i, i + 2));
-    grams.forEach((g) => add(g, 1));
-    for (const [key, syns] of Object.entries(SYNONYMS)) {
-      if (s.startsWith(key) || s === key) syns.forEach((syn) => (syn.length <= 2 ? add(syn, 0.6) : add(syn.slice(0, 2), 0.6)));
-    }
+    if (!words.includes(s)) words.push(s);
+    if (s.length === 1) grams.add(s);
+    else for (let i = 0; i < s.length - 1; i++) grams.add(s.slice(i, i + 2));
   }
-  return [...out].map(([token, weight]) => ({ token, weight }));
+  return { words, grams: [...grams] };
 }
 
 function docTokens(text) {
@@ -100,65 +92,74 @@ function docTokens(text) {
   return counts;
 }
 
-/**
- * docs: [{id, date, sentence, ...}] → 관련도 순 최대 k개
- * 날짜 범위를 먼저 적용하고, 내용어가 없는 질문(예: '이번 달 기록 보여줘')은 최근 순으로 고릅니다.
- */
-export function retrieve(question, docs, today, k = TOP_K) {
-  const { range, rest } = parseDateRange(String(question), today);
-  const pool = range ? docs.filter((d) => d.date >= range.from && d.date <= range.to) : docs.slice();
-  const terms = queryTerms(rest);
-  if (pool.length === 0) return { range, terms, results: [], reason: range ? 'empty_range' : 'no_records' };
-  if (terms.length === 0) {
-    const results = pool.sort((a, b) => b.date.localeCompare(a.date)).slice(0, k).map((d) => ({ ...d, score: 0 }));
-    return { range, terms, results, reason: range ? 'range_only' : 'recent' };
-  }
+/** 기간 안의 기록(pool)에서 n-gram BM25로 최대 k개. 내용어가 없으면 최근 순 */
+export function searchPool(pool, grams, k = TOP_K) {
+  if (!pool.length) return [];
+  if (!grams.length) return pool.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, k).map((d) => ({ ...d, score: 0 }));
   const N = pool.length;
   const toks = pool.map((d) => docTokens(d.sentence));
   const avgLen = toks.reduce((s, t) => s + [...t.values()].reduce((a, b) => a + b, 0), 0) / N || 1;
-  const scored = pool.map((d, i) => {
+  return pool.map((d, i) => {
     const tf = toks[i];
     const len = [...tf.values()].reduce((a, b) => a + b, 0);
     let score = 0;
-    for (const { token, weight } of terms) {
-      const f = tf.get(token) || 0;
+    for (const g of grams) {
+      const f = tf.get(g) || 0;
       if (!f) continue;
-      const df = toks.filter((t) => t.has(token)).length;
+      const df = toks.filter((t) => t.has(g)).length;
       const idf = Math.log(1 + (N - df + 0.5) / (df + 0.5));
-      score += weight * idf * ((f * 2.2) / (f + 1.2 * (0.25 + 0.75 * (len / avgLen))));
+      score += idf * ((f * 2.2) / (f + 1.2 * (0.25 + 0.75 * (len / avgLen))));
     }
     return { ...d, score: Math.round(score * 1000) / 1000 };
-  });
-  const results = scored.filter((d) => d.score > 0.05)
-    .sort((a, b) => b.score - a.score || b.date.localeCompare(a.date)).slice(0, k);
-  return { range, terms, results, reason: results.length ? 'matched' : 'no_match' };
+  }).filter((d) => d.score > 0.05).sort((a, b) => b.score - a.score || b.date.localeCompare(a.date)).slice(0, k);
 }
 
-// ───────────── OpenRouter 호출 ─────────────
-const SYSTEM_PROMPT = `너는 개인 영상 다이어리 서비스 '하루 한 장'의 '기억 찾기' 도우미야.
-반드시 사용자 메시지에 주어진 일기 기록만 근거로 한국어 한두 문장으로 답해.
-날짜는 'M월 D일' 형식으로 말하고, 기록에 없는 내용은 추측하거나 지어내지 마.
-주어진 기록으로 질문에 답할 수 없으면 다른 말 없이 정확히 NO_ANSWER 라고만 출력해.`;
+/** 1회 검색 (테스트·기존 호출 호환용) */
+export function retrieve(question, docs, today, k = TOP_K) {
+  const { range, rest } = parseDateRange(String(question), today);
+  const pool = range ? docs.filter((d) => d.date >= range.from && d.date <= range.to) : docs.slice();
+  const q = queryTerms(rest);
+  if (!pool.length) return { range, terms: q.words, results: [], reason: range ? 'empty_range' : 'no_records' };
+  const results = searchPool(pool, q.grams, k);
+  return { range, terms: q.words, results, reason: results.length ? (q.grams.length ? 'matched' : 'recent') : 'no_match' };
+}
 
-/** 외부로 나가는 내용 그대로를 만들어 둡니다(화면에서도 확인 가능). */
-export function buildPayload(question, records, today) {
-  const lines = records.map((r, i) => `[${i + 1}] ${r.date} — ${r.sentence}`).join('\n');
+// ───────────── OpenRouter: 다음 행동 고르기 ─────────────
+export const AGENT_PROMPT = `너는 개인 영상 다이어리 서비스 '하루 한 장'의 '기억 찾기' 도우미야.
+사용자의 질문과, 서버가 그 사용자의 일기에서 검색해 온 기록(번호, 날짜, 일기 문장)이 주어져.
+기록을 보고 다음 중 하나만 골라 JSON 객체 하나로만 출력해. 다른 글은 쓰지 마.
+
+1) 질문에 대한 근거가 기록에 있으면:
+   {"action":"answer","answer":"한국어 한두 문장","used":[근거 기록 번호]}
+2) 근거가 없거나 부족하고, '재검색 가능: 예'이면:
+   {"action":"retry","keywords":["단서1","단서2"],"reason":"짧은 이유"}
+   - keywords는 최대 4개. 질문의 뜻은 그대로 두고, 일기 문장에 실제로 쓰였을 법한 다른 낱말을 골라
+     (유의어, 함께 떠올릴 사물·소리·장소, 다른 표현. 예: 비 → 빗소리, 우산, 빗방울).
+   - '이번 달', '지난달' 같은 기간 표현은 넣지 마. 기간은 서버가 그대로 지켜.
+3) 근거가 없고 '재검색 가능: 아니오'이면:
+   {"action":"not_found"}
+
+규칙:
+- answer는 주어진 일기 문장에 실제로 적힌 내용만 근거로 해. 날짜는 'M월 D일'로 말해.
+- 영상에 무엇이 찍혔는지는 문장에 적혀 있지 않으면 추측하지 마.
+- 질문의 핵심과 맞지 않는 기록(일부 낱말만 겹치는 기록)은 근거로 쓰지 마.`;
+
+/** OpenRouter로 보낼 메시지 (질문 + 날짜·문장만) */
+export function buildAgentPayload(question, records, allowRetry) {
+  const lines = records.length ? records.map((r, i) => `[${i + 1}] ${r.date} — ${r.sentence}`).join('\n') : '(검색된 기록 없음)';
   return {
     model: config.openrouter.model,
-    temperature: 0.2,
-    max_tokens: 200,
+    temperature: 0.1,
+    max_tokens: 300,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `오늘 날짜: ${today}\n질문: ${question}\n\n일기 기록:\n${lines}` },
+      { role: 'system', content: AGENT_PROMPT },
+      { role: 'user', content: `질문: ${question}\n재검색 가능: ${allowRetry ? '예' : '아니오'}\n\n검색된 일기:\n${lines}` },
     ],
   };
 }
 
-export async function generateAnswer(question, records, today) {
-  const payload = buildPayload(question, records, today);
-  if (!config.openrouter.apiKey) {
-    return { status: 'no_key', message: 'AI 답변을 만들지 못했어요. 서버에 OpenRouter API 키가 설정되어 있지 않아요. 찾은 기록은 아래에서 바로 열어볼 수 있어요.' };
-  }
+async function callOpenRouter(payload) {
+  if (!config.openrouter.apiKey) return { ok: false, status: 'no_key', message: 'AI에 연결하지 못했어요(서버에 OpenRouter API 키가 없음).' };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), config.openrouter.timeoutMs);
   try {
@@ -176,20 +177,108 @@ export async function generateAnswer(question, records, today) {
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       console.warn(`[rag] OpenRouter HTTP ${res.status}: ${body.slice(0, 200)}`);
-      return { status: 'api_error', message: `AI 연결에 실패했어요(응답 코드 ${res.status}). 찾은 기록은 아래에서 열어볼 수 있어요.` };
+      return { ok: false, status: 'api_error', message: `AI 연결에 실패했어요(응답 코드 ${res.status}).` };
     }
     const data = await res.json();
-    const text = String(data?.choices?.[0]?.message?.content ?? '').trim();
-    if (!text) return { status: 'api_error', message: 'AI가 빈 답변을 돌려줬어요. 찾은 기록은 아래에서 열어볼 수 있어요.' };
-    if (/NO_ANSWER/.test(text)) return { status: 'no_answer', message: '기록에서 질문에 대한 답을 찾지 못했어요.', model: data.model };
-    return { status: 'ok', answer: text.slice(0, 400), model: data.model || payload.model };
+    return { ok: true, content: String(data?.choices?.[0]?.message?.content ?? '').trim(), model: data.model || payload.model };
   } catch (e) {
     const timeout = e.name === 'AbortError';
     console.warn(`[rag] OpenRouter ${timeout ? 'timeout' : 'error'}: ${e.message}`);
-    return { status: 'api_error', message: timeout ? 'AI 응답이 너무 늦어 연결을 멈췄어요. 찾은 기록은 아래에서 열어볼 수 있어요.' : 'AI 서비스에 연결하지 못했어요. 찾은 기록은 아래에서 열어볼 수 있어요.' };
+    return { ok: false, status: 'api_error', message: timeout ? 'AI 응답이 너무 늦어 연결을 멈췄어요.' : 'AI 서비스에 연결하지 못했어요.' };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** AI 응답(JSON)을 읽어 행동으로 바꿉니다. 형식이 어긋나면 안전한 쪽(not_found)으로 */
+export function parseDecision(content, recordsCount, allowRetry) {
+  let obj = null;
+  const m = String(content).match(/\{[\s\S]*\}/);
+  if (m) { try { obj = JSON.parse(m[0]); } catch { /* 형식 오류 */ } }
+  if (!obj || typeof obj !== 'object') return { action: 'not_found', note: 'AI 응답 형식을 읽지 못함' };
+  const action = String(obj.action || '');
+  if (action === 'answer' && recordsCount > 0) {
+    const used = [...new Set((Array.isArray(obj.used) ? obj.used : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= recordsCount))];
+    return { action: 'answer', answer: String(obj.answer || '').trim().slice(0, 300), used: used.length ? used : [1] };
+  }
+  if (action === 'retry' && allowRetry) {
+    const keywords = [...new Set((Array.isArray(obj.keywords) ? obj.keywords : [])
+      .map((k) => String(k).replace(/[^0-9a-zA-Z가-힣\s]/g, '').trim().slice(0, 12)).filter(Boolean))].slice(0, MAX_KEYWORDS);
+    if (keywords.length) return { action: 'retry', keywords, reason: String(obj.reason || '').slice(0, 120) };
+  }
+  return { action: 'not_found' };
+}
+
+/** 답변에 나온 'M월 D일'이 실제 근거 기록 날짜와 맞는지 확인 (맞지 않으면 답변 문장을 쓰지 않음) */
+function answerMatchesSources(answer, sources) {
+  const dates = new Set(sources.map((s) => `${Number(s.date.slice(5, 7))}월 ${Number(s.date.slice(8, 10))}일`));
+  const mentioned = [...String(answer).matchAll(/(\d{1,2})월\s*(\d{1,2})일/g)].map((x) => `${Number(x[1])}월 ${Number(x[2])}일`);
+  return mentioned.every((d) => dates.has(d));
+}
+
+const NOT_FOUND = '관련된 기록을 찾지 못했어요.';
+const pub = (r) => ({ id: r.id, date: r.date, sentence: r.sentence, example: !!r.example });
+
+/**
+ * 기억 찾기 전체 흐름. docs는 '이 사용자의' 기록만 넘깁니다.
+ * 반환: { status, answer?, message, range, sources, candidates, trace, sentToAi }
+ */
+export async function memorySearch({ question, docs, today }) {
+  const { range, rest } = parseDateRange(String(question), today);
+  const pool = range ? docs.filter((d) => d.date >= range.from && d.date <= range.to) : docs.slice();
+  const trace = [];
+  const sentToAi = [];
+  const base = { range, trace, sentToAi };
+
+  if (!docs.length) return { ...base, status: 'no_records', message: '아직 검색할 기록이 없어요. 책상에서 오늘의 한 장을 먼저 남겨 보세요.', sources: [], candidates: [] };
+  if (!pool.length) {
+    trace.push({ kind: 'search', round: 1, terms: [], range, found: 0, note: '기간 안에 기록이 없음' });
+    return { ...base, status: 'empty_range', message: `${range.label}(${range.from} ~ ${range.to})에는 남긴 기록이 없어요.`, sources: [], candidates: [] };
+  }
+
+  // 1차 검색
+  const q1 = queryTerms(rest);
+  const r1 = searchPool(pool, q1.grams);
+  trace.push({ kind: 'search', round: 1, terms: q1.words.length ? q1.words : ['(내용어 없음 → 기간 안 최근 기록)'], range, found: r1.length, dates: r1.map((r) => r.date) });
+
+  const decide = async (round, records, allowRetry) => {
+    const payload = buildAgentPayload(question, records, allowRetry);
+    sentToAi.push({ round, question, records: records.map((r) => ({ date: r.date, sentence: r.sentence })) });
+    const res = await callOpenRouter(payload);
+    if (!res.ok) { trace.push({ kind: 'ai', round, action: 'error', note: res.message }); return { error: res }; }
+    const d = parseDecision(res.content, records.length, allowRetry);
+    trace.push({ kind: 'ai', round, action: d.action, ...(d.keywords ? { keywords: d.keywords, reason: d.reason } : {}), ...(d.note ? { note: d.note } : {}), model: res.model });
+    return { decision: d };
+  };
+  const failed = (err, candidates) => ({
+    ...base, status: err.status, sources: [], candidates: candidates.map(pub),
+    message: `${err.message} ${candidates.length ? '검색으로 찾은 기록은 아래에서 직접 열어볼 수 있어요.' : '검색으로 찾은 기록도 없어요.'}`,
+  });
+  const answered = (d, records) => {
+    const sources = d.used.map((n) => records[n - 1]).filter(Boolean);
+    const okText = d.answer && answerMatchesSources(d.answer, sources);
+    if (!okText) trace.push({ kind: 'check', note: 'AI 답변의 날짜가 근거 기록과 맞지 않아 답변 문장 대신 기록만 표시' });
+    return { ...base, status: 'ok', answer: okText ? d.answer : '질문과 관련된 기록을 찾았어요. 아래에서 날짜와 실제 문장을 확인해 보세요.', sources: sources.map(pub), candidates: records.map(pub) };
+  };
+
+  const a1 = await decide(1, r1, true);
+  if (a1.error) return failed(a1.error, r1);
+  if (a1.decision.action === 'answer') return answered(a1.decision, r1);
+  if (a1.decision.action !== 'retry') return { ...base, status: 'not_found', message: NOT_FOUND, sources: [], candidates: r1.map(pub) };
+
+  // 2차 검색: AI가 고른 단서로, 같은 기간 안에서
+  const q2 = queryTerms(a1.decision.keywords.join(' '));
+  const r2 = searchPool(pool, q2.grams);
+  trace.push({ kind: 'search', round: 2, terms: q2.words, range, found: r2.length, dates: r2.map((r) => r.date) });
+  const merged = [...r2, ...r1.filter((x) => !r2.some((y) => y.id === x.id))].slice(0, TOP_K);
+  if (!merged.length) {
+    trace.push({ kind: 'ai', round: 2, action: 'not_found', note: '다시 찾은 기록이 0건이라 AI에 묻지 않음' });
+    return { ...base, status: 'not_found', message: NOT_FOUND, sources: [], candidates: [] };
+  }
+  const a2 = await decide(2, merged, false);
+  if (a2.error) return failed(a2.error, merged);
+  if (a2.decision.action === 'answer') return answered(a2.decision, merged);
+  return { ...base, status: 'not_found', message: NOT_FOUND, sources: [], candidates: merged.map(pub) };
 }
 
 /** 예시 기록 3개 — 개인 기록과 분리. 날짜는 질문 시점(오늘) 기준으로 만듭니다. */
@@ -199,7 +288,7 @@ export function exampleRecords(today) {
   const last = (d) => fmt(new Date(Date.UTC(y, m - 1, d)));
   return [
     { id: 'ex-1', date: fmt(t), sentence: '동아리 친구들이랑 불꽃놀이를 보다가 배가 아플 때까지 웃었다.', videoUrl: '/media/samples/sample-fireworks.mp4', poster: '/media/samples/sample-fireworks.jpg', example: true },
-    { id: 'ex-2', date: last(12), sentence: '우산 없이 정류장까지 뛰었는데 비 냄새가 생각보다 좋았다.', videoUrl: '/media/samples/sample-rain.mp4', poster: '/media/samples/sample-rain.jpg', example: true },
+    { id: 'ex-2', date: last(12), sentence: '창가에 앉아 빗소리를 들으며 우산 쓴 사람들이 지나가는 모습을 영상으로 남겼다.', videoUrl: '/media/samples/sample-rain.mp4', poster: '/media/samples/sample-rain.jpg', example: true },
     { id: 'ex-3', date: last(25), sentence: '혼자 창가에 앉아 고양이랑 노을이 다 질 때까지 멍하니 있었다.', videoUrl: '/media/samples/sample-sunset.mp4', poster: '/media/samples/sample-sunset.jpg', example: true },
   ];
 }

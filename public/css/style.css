@@ -196,3 +196,8 @@ table.credits td, table.credits th { border-bottom: 1px solid var(--border); pad
   .modal { padding: 14px; }
   .radio-controls input[type=range] { width: 70px; }
 }
+
+/* 기억 찾기: 검색 과정 */
+.trace { margin-top: 10px; }
+.trace code { background: rgba(255,207,110,.18); color: var(--accent); padding: 0 5px; border-radius: 3px; font-size: 13px; }
+.trace li { margin-bottom: 6px; }

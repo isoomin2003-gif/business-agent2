@@ -129,10 +129,11 @@ test('기억 찾기: 키가 없으면 no_key 상태로 검색 결과만 돌려�
   const a = await guest();
   const r = await a.call('/api/memory/search', { method: 'POST', body: JSON.stringify({ question: '이번 달에 친구랑 웃었던 날이 언제였지?', mode: 'example', today }) });
   assert.equal(r.body.status, 'no_key');
-  assert.equal(r.body.sources[0].id, 'ex-1');
-  const none = await a.call('/api/memory/search', { method: 'POST', body: JSON.stringify({ question: '바다에 놀러 간 날', mode: 'example', today }) });
-  assert.equal(none.body.status, 'no_results');
-  assert.equal(none.body.sentToAi, null);
+  assert.equal(r.body.candidates[0].id, 'ex-1'); // 검색으로 찾은 기록은 직접 열어볼 수 있음
+  assert.equal(r.body.trace[0].kind, 'search');
+  const mine = await a.call('/api/memory/search', { method: 'POST', body: JSON.stringify({ question: '웃은 날', mode: 'mine', today }) });
+  assert.equal(mine.body.status, 'no_records'); // 기록이 없으면 AI를 부르지 않음
+  assert.equal(mine.body.sentToAi.length, 0);
 });
 
 test('삭제: 내 일기·소원만 지울 수 있고, 일기를 지우면 영상도 열리지 않는다', async () => {
