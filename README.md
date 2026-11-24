@@ -178,7 +178,9 @@ fly secrets set OPENROUTER_API_KEY=<내 키> ADMIN_KEY=<길고 임의의 값> PU
 fly deploy
 ```
 
-**B. Render (`render.yaml` 포함)** — Render 대시보드 → New → **Blueprint** → 이 저장소 선택. 디스크(`/data`)가 붙는 Starter 이상 플랜이 필요합니다. `OPENROUTER_API_KEY`, `PUBLIC_URL` 은 대시보드에서 입력하고, `ADMIN_KEY` 는 자동 생성된 값을 Environment 탭에서 확인합니다.
+**B. Render (`render.yaml` 포함, 무료 플랜)** — Render 대시보드 → New → **Blueprint** → 이 저장소 선택. `OPENROUTER_API_KEY` 는 생성 화면에서 입력하고, `PUBLIC_URL` 은 배포 후 나온 주소로 Environment 탭에서 채웁니다. `ADMIN_KEY` 는 자동 생성된 값을 Environment 탭에서 확인합니다.
+
+> ⚠️ 현재 `render.yaml` 은 **Free 플랜**입니다. 무료 플랜에는 영구 디스크가 없어 **서버가 잠들었다 깨거나(15분 무접속 시) 재배포되면 다이어리·영상·소원이 모두 초기화**되고, 잠든 뒤 첫 접속은 깨어나는 데 1분가량 걸립니다. 기록을 유지하려면 `plan: starter` 로 바꾸고 `disk:` 블록의 주석을 해제하세요(유료).
 
 두 방식 모두 같은 `Dockerfile`(node:22-slim, `npm ci --omit=dev`)을 사용하고 `/healthz` 로 상태를 확인합니다.
 

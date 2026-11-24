@@ -1,15 +1,18 @@
-# Render Blueprint (README '배포' 참고). 영구 디스크는 유료(Starter 이상) 플랜에서만 붙일 수 있습니다.
+# Render Blueprint (README '배포' 참고) — 무료(Free) 플랜 설정
+# 주의: 무료 플랜에는 영구 디스크가 없어서, 서버가 잠들었다 깨거나 재시작·재배포되면
+#       다이어리·영상·소원(DATA_DIR=/data)이 모두 초기화됩니다.
+#       기록을 유지하려면 plan을 starter로 바꾸고 아래 disk 블록의 주석을 해제하세요.
 services:
   - type: web
     name: haru-hanjang
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /healthz
     numInstances: 1
-    disk:
-      name: haru-data
-      mountPath: /data
-      sizeGB: 3
+    # disk:
+    #   name: haru-data
+    #   mountPath: /data
+    #   sizeGB: 3
     envVars:
       - key: NODE_ENV
         value: production
