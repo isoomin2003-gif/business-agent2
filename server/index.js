@@ -10,15 +10,12 @@ import { memoryRouter } from './memory.js';
 import { wishRouter } from './wishes.js';
 import { setupRealtime, counts, fireStar, getRadio, renameLive } from './realtime.js';
 import { TRACKS } from './tracks.js';
-import { loadLibrary, addedTracks, getTrack, removeTracks } from './library.js';
+import { loadLibrary, addedTracks, getTrack } from './library.js';
 import { compose, getDraft, storageKey } from './compose.js';
 import { OUTDOOR } from '../public/js/shared/places.js';
 
 const db = await initDb();
 const storage = await initStorage();
-// 배포 사이트 점검(2026-11-24) 중 테스트로 신청한 곡 정리 — 한 번 지운 뒤에는 아무 일도 하지 않음
-const purged = await removeTracks(['ov:5760d7b2-12d7-4a1a-a816-55712f02dbb6', 'ai:8GWHiGb3EsIj'], (id) => storage.remove(storageKey(id)));
-if (purged) console.log(`[radio] 점검용 신청곡 ${purged}개 정리`);
 const libCount = await loadLibrary(); // 신청되어 라디오에 추가된 곡
 console.log(`[radio] 추가된 곡 ${libCount}개 불러옴`);
 
