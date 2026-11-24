@@ -4,11 +4,11 @@ import cookieParser from 'cookie-parser';
 import { config, PATHS } from './config.js';
 import { initDb } from './db.js';
 import { initStorage } from './storage.js';
-import { createGuest, setGuestCookie, userFromToken, COOKIE, requireAdmin, wrap } from './auth.js';
+import { createGuest, setGuestCookie, userFromToken, COOKIE, requireAdmin, wrap, cleanNickname, randomNickname, renameUser, requireUser } from './auth.js';
 import { diaryRouter, SAMPLE_VIDEOS } from './diary.js';
 import { memoryRouter } from './memory.js';
 import { wishRouter } from './wishes.js';
-import { setupRealtime, counts, fireStar, getRadio } from './realtime.js';
+import { setupRealtime, counts, fireStar, getRadio, renameLive } from './realtime.js';
 import { TRACKS } from './tracks.js';
 import { OUTDOOR } from '../public/js/shared/places.js';
 
@@ -30,10 +30,28 @@ app.get('/api/me', wrap(async (req, res) => {
   res.json({ user: await userFromToken(req.cookies[COOKIE]) });
 }));
 
-app.post('/api/guest', wrap(async (req, res) => {
+// 처음 온 사람에게 보여 줄 추천 닉네임 (계정은 '바로 시작하기'를 누를 때 만듦)
+app.get('/api/nickname/suggest', (req, res) => res.json({ nickname: randomNickname() }));
+
+// 현재 게스트 계정의 닉네임 변경 — 같은 계정이라 기존 일기·영상은 그대로
+app.patch('/api/me', express.json(), requireUser, wrap(async (req, res) => {
+  const { nickname, error } = cleanNickname(req.body?.nickname);
+  if (error) return res.status(400).json({ error: 'bad_nickname', message: error });
+  await renameUser(req.user.id, nickname);
+  renameLive(req.user.id, nickname); // 접속 중인 소켓과 옥상·공원 아바타 이름표에도 반영
+  res.json({ user: { ...req.user, nickname } });
+}));
+
+app.post('/api/guest', express.json(), wrap(async (req, res) => {
   const existing = await userFromToken(req.cookies[COOKIE]);
   if (existing) return res.json({ user: existing, created: false });
-  const { token, user } = await createGuest();
+  let nickname;
+  if (req.body?.nickname) {
+    const c = cleanNickname(req.body.nickname);
+    if (c.error) return res.status(400).json({ error: 'bad_nickname', message: c.error });
+    nickname = c.nickname;
+  }
+  const { token, user } = await createGuest(nickname);
   setGuestCookie(res, token);
   res.json({ user, created: true });
 }));

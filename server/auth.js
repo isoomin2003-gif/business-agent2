@@ -13,14 +13,25 @@ export const hashToken = (t) => crypto.createHash('sha256').update(t).digest('he
 /** async 라우트의 오류를 Express 오류 처리로 넘깁니다 */
 export const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-function randomNickname() {
+export const NICK_MAX = 12;
+const graphemes = (t) => [...new Intl.Segmenter('ko', { granularity: 'grapheme' }).segment(t)].length;
+/** 닉네임 검사: 앞뒤 공백 정리, 1~12자, 제어문자·꺾쇠 등 금지 */
+export function cleanNickname(raw) {
+  const nick = String(raw ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
+  if (!nick) return { error: '닉네임을 입력해 주세요.' };
+  if (graphemes(nick) > NICK_MAX) return { error: `닉네임은 ${NICK_MAX}자까지 쓸 수 있어요.` };
+  if (/[\u0000-\u001f\u007f<>{}\\`]/.test(nick)) return { error: '닉네임에 쓸 수 없는 기호가 있어요.' };
+  return { nickname: nick };
+}
+
+export function randomNickname() {
   const r = (a) => a[crypto.randomInt(a.length)];
   return `${r(ADJ)} ${r(NOUN)}${crypto.randomInt(10, 100)}`;
 }
 
-export async function createGuest() {
+export async function createGuest(nickname) {
   const token = crypto.randomBytes(32).toString('base64url');
-  const user = { id: crypto.randomUUID(), nickname: randomNickname(), color: crypto.randomInt(8) };
+  const user = { id: crypto.randomUUID(), nickname: nickname || randomNickname(), color: crypto.randomInt(8) };
   const t = nowIso();
   await getDb().run('INSERT INTO users (id, token_hash, nickname, color, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)',
     [user.id, hashToken(token), user.nickname, user.color, t, t]);
@@ -31,6 +42,11 @@ export async function userFromToken(token) {
   if (!token || typeof token !== 'string' || token.length > 100) return null;
   const row = await getDb().get('SELECT id, nickname, color FROM users WHERE token_hash = ?', [hashToken(token)]);
   return row ? { id: row.id, nickname: row.nickname, color: Number(row.color) } : null;
+}
+
+/** 현재 게스트 계정의 닉네임만 바꿈 (일기·영상·소원은 그대로) */
+export async function renameUser(userId, nickname) {
+  await getDb().run('UPDATE users SET nickname = ?, last_seen_at = ? WHERE id = ?', [nickname, nowIso(), userId]);
 }
 
 export function setGuestCookie(res, token) {

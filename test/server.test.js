@@ -170,3 +170,30 @@ test('삭제: 내 일기·소원만 지울 수 있고, 일기를 지우면 영�
   assert.equal((await b.call(`/api/wishes/${w.id}`)).status, 404);
   sa.close();
 });
+
+test('닉네임: 현재 게스트 이름만 바뀌고 일기는 그대로, 옥상의 다른 사람에게 반영', async () => {
+  // 첫 방문자가 입장 전에 고른 닉네임으로 계정 생성
+  const res = await fetch(`${BASE}/api/guest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: '  새벽 산책자  ' }) });
+  assert.equal((await res.json()).user.nickname, '새벽 산책자');
+  const a = await guest(), b = await guest();
+  const v = await a.call('/api/videos/sample', { method: 'POST', body: JSON.stringify({ sampleId: 'sunset' }) });
+  await a.call(`/api/diary/day/${today}`, { method: 'PUT', body: JSON.stringify({ sentence: '이름이 바뀌어도 남는 일기', videoId: v.body.videoId }) });
+  const sa = await sock(a.cookie), sb = await sock(b.cookie);
+  await emit(sa, 'join', { place: 'rooftop' });
+  const joined = await emit(sb, 'join', { place: 'rooftop' });
+  const renamed = new Promise((r) => sb.once('player:rename', r));
+  const r = await a.call('/api/me', { method: 'PATCH', body: JSON.stringify({ nickname: '아주아주긴닉네임열두글자' }) });
+  assert.equal(r.status, 200);
+  const ev = await renamed;
+  assert.equal(ev.nickname, '아주아주긴닉네임열두글자');
+  assert.ok(joined.players.some((p) => p.sid === ev.sid));
+  assert.equal((await a.call('/api/me')).body.user.nickname, '아주아주긴닉네임열두글자');
+  assert.equal((await a.call(`/api/diary/month/${today.slice(0, 7)}`)).body.entries[0].sentence, '이름이 바뀌어도 남는 일기');
+  // 다른 사람 이름은 그대로, 잘못된 이름은 거절
+  assert.notEqual((await b.call('/api/me')).body.user.nickname, '아주아주긴닉네임열두글자');
+  assert.equal((await a.call('/api/me', { method: 'PATCH', body: JSON.stringify({ nickname: '열세글자가넘는아주긴닉네임' }) })).status, 400);
+  assert.equal((await a.call('/api/me', { method: 'PATCH', body: JSON.stringify({ nickname: '   ' }) })).status, 400);
+  assert.equal((await a.call('/api/me', { method: 'PATCH', body: JSON.stringify({ nickname: '<b>x</b>' }) })).status, 400);
+  assert.equal((await fetch(`${BASE}/api/me`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{"nickname":"x"}' })).status, 401);
+  sa.close(); sb.close();
+});

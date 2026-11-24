@@ -1,3 +1,8 @@
+/* 글꼴: 갈무리11(픽셀, 짧은 제목·버튼·이름표) + 고운돋움(읽는 문장). 둘 다 SIL OFL 1.1, public/fonts 참고 */
+@font-face { font-family: 'Galmuri11'; src: url('/fonts/Galmuri11.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Galmuri11'; src: url('/fonts/Galmuri11-Bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Gowun Dodum'; src: url('/fonts/GowunDodum-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
 :root {
   --bg: #1b1426;
   --panel: #2a2035;
@@ -14,7 +19,9 @@
   --danger: #ff8f8f;
   --border: #4b3b5e;
   --shadow: 0 4px 0 #0e0a14;
-  --font: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --font-read: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --font-pixel: "Galmuri11", "Apple SD Gothic Neo", "Malgun Gothic", monospace;
+  --font: var(--font-read);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font); }
@@ -222,3 +229,52 @@ table.credits td, table.credits th { border-bottom: 1px solid var(--border); pad
 .dj-reason { margin: 6px 0 0; line-height: 1.5; }
 .dj-act .btn { white-space: nowrap; }
 @media (max-width: 520px) { .dj-card { grid-template-columns: 1fr; } }
+
+
+/* ───────── 글꼴 역할 ─────────
+   갈무리11은 12px(또는 24px)에서 픽셀이 또렷하게 맞으므로 짧은 글자에 그 크기로만 씁니다. */
+.landing h1, .place-chip, .name-chip, .nametag, .btn, .tab, .chip, .modal h2, .badge, .tooltip, .float-banner,
+.first-hint, .place-card .title, .place-card .count, .book-spine, .counter, .cards-label, .memory-card time,
+.diary-date, .react, .toast, table.credits th, .wish .meta, .radio-now .t, .dj-card .t, .home-btn, .nick-row .label {
+  font-family: var(--font-pixel); letter-spacing: 0; -webkit-font-smoothing: none; font-smooth: never;
+}
+.btn, .tab, .chip, .badge, .tooltip, .counter, .cards-label, .memory-card time, .react, .toast, .wish .meta,
+table.credits th, .place-card .count, .name-chip, .nametag { font-size: 12px; font-weight: 400; }
+.btn { padding: 7px 12px; line-height: 1.2; }
+.btn-small { padding: 5px 9px; }
+.btn-big { font-size: 24px; padding: 12px 28px; }
+.landing h1 { font-size: 48px; font-weight: 700; letter-spacing: 2px; }
+.modal h2, .place-card .title, .diary-date, .radio-now .t, .dj-card .t { font-size: 24px; font-weight: 400; }
+.place-chip { font-size: 12px; font-weight: 700; padding: 5px 10px; }
+.float-banner, .first-hint { font-size: 12px; font-weight: 700; }
+.nametag { padding: 2px 6px 1px; }
+.book-spine { font-size: 12px; }
+.book-spine span { font-size: 24px !important; }
+h3 { font-family: var(--font-pixel); font-size: 12px; font-weight: 700; }
+
+/* 고운돋움: 사람이 쓰고 읽는 문장 */
+.bubble, .wish .text, .result .answer, .memory-card span, .book .sentence, textarea, .modal input[type=text],
+.chat-form input, .dj-reason, .lead, .notice, .ai-note, .hint-line {
+  font-family: var(--font-read);
+}
+.bubble { font-size: clamp(13px, calc(var(--stage-w) / 60), 16px); line-height: 1.45; }
+textarea#d-text { font-size: 18px; line-height: 1.8; }
+.book .sentence { font-size: 21px; line-height: 1.95; font-weight: 400; }
+.memory-card time { color: #8a5a3c; }
+.memory-card span { font-size: 18px; line-height: 1.6; }
+.memory .result .answer { font-size: 17px; line-height: 1.75; }
+.wish .text { font-size: 17px; line-height: 1.6; }
+
+/* 첫 화면 닉네임 */
+.nick-row { margin: 18px auto 14px; max-width: 420px; }
+.nick-row #nick-view { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.nick-row .label { font-size: 12px; color: var(--muted); }
+.nick-row #nick-text { font-family: var(--font-pixel); font-size: 24px; font-weight: 400; color: var(--ink); word-break: break-all; }
+.nick-row form { justify-content: center; }
+.nick-row input { flex: 1; min-width: 160px; padding: 8px 10px; border: 2px solid #0e0a14; border-radius: 4px; background: #fffaf0; color: #2b1d14; font-family: var(--font-read); font-size: 16px; }
+.nick-msg { font-size: 13px; color: var(--green); margin: 6px 0 0; }
+.nick-msg.err { color: var(--danger); }
+.home-btn { white-space: nowrap; }
+
+.bubble { max-width: min(260px, calc(100% - 16px)); }
+@media (max-width: 640px) { .bubble { font-size: 13px; padding: 5px 9px; } }

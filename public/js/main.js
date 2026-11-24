@@ -38,33 +38,85 @@ function drawLanding() {
   room.props[0].draw(c);
 }
 
+// ───────────── 첫 화면 (닉네임 확인·변경) ─────────────
+let pendingNick = null; // 아직 계정이 없는 첫 방문자의 닉네임(바로 시작하기를 누를 때 계정 생성)
+
+function showNick(name) {
+  $('#nick-text').textContent = name;
+  $('#nick-view').hidden = false; $('#nick-form').hidden = true;
+}
+function nickMsg(text, err = false) {
+  const el = $('#nick-msg'); el.hidden = !text; el.textContent = text || ''; el.classList.toggle('err', err);
+}
+
 async function boot() {
   drawLanding();
   // 느린 연결에서도 바로 누를 수 있도록 이전 세션 확인보다 먼저 연결
   $('#start-btn').addEventListener('click', start);
+  $('#nick-edit').addEventListener('click', () => {
+    $('#nick-input').value = user?.nickname || pendingNick || '';
+    $('#nick-view').hidden = true; $('#nick-form').hidden = false; nickMsg('');
+    $('#nick-input').focus(); $('#nick-input').select();
+  });
+  $('#nick-cancel').addEventListener('click', () => { showNick(user?.nickname || pendingNick); nickMsg(''); });
+  $('#nick-form').addEventListener('submit', saveNick);
   try {
     const { user: u } = await api('/api/me');
-    if (u && !user) $('#start-btn').textContent = `내 방으로 들어가기 · ${u.nickname}`;
+    if (u) { user = user || u; showNick(u.nickname); $('#start-btn').textContent = '내 방으로 들어가기'; return; }
   } catch { /* 첫 방문 */ }
+  try { pendingNick = (await api('/api/nickname/suggest')).nickname; } catch { pendingNick = null; }
+  showNick(pendingNick || '(바로 시작하기를 누르면 정해져요)');
+}
+
+async function saveNick(e) {
+  e.preventDefault();
+  const name = $('#nick-input').value.replace(/\s+/g, ' ').trim();
+  if (!name) return nickMsg('닉네임을 입력해 주세요.', true);
+  if ([...new Intl.Segmenter('ko', { granularity: 'grapheme' }).segment(name)].length > 12) return nickMsg('닉네임은 12자까지 쓸 수 있어요.', true);
+  $('#nick-save').disabled = true;
+  try {
+    if (user) {
+      // 이미 게스트 계정이 있으면 그 계정의 이름만 바꿈 (일기·영상은 그대로)
+      const r = await api('/api/me', { method: 'PATCH', body: { nickname: name } });
+      user = { ...user, nickname: r.user.nickname };
+      showNick(user.nickname); nickMsg('닉네임을 바꿨어요.');
+    } else {
+      pendingNick = name; showNick(name); nickMsg('입장할 때 이 닉네임을 써요.');
+    }
+  } catch (err) { nickMsg(err.message, true); } finally { $('#nick-save').disabled = false; }
 }
 
 async function start() {
   $('#start-btn').disabled = true;
   try {
-    const r = await api('/api/guest', { method: 'POST' });
-    user = r.user;
-    if (r.created) toast(`임시 닉네임 ‘${user.nickname}’(으)로 입장했어요`);
+    if (!user) {
+      const r = await api('/api/guest', { method: 'POST', body: pendingNick ? { nickname: pendingNick } : {} });
+      user = r.user;
+    }
     enterGame();
   } catch (e) {
     $('#start-error').hidden = false; $('#start-error').textContent = e.message;
-    $('#start-btn').disabled = false;
-  }
+  } finally { $('#start-btn').disabled = false; }
 }
 
+/** 방에서 '← 홈으로': 게스트 세션은 그대로 두고 첫 화면으로 */
+function goLanding() {
+  closeAllModals();
+  moveToken++; // 방에서 걷던 동작 취소
+  $('#game').hidden = true;
+  $('#landing').hidden = false;
+  showNick(user.nickname); nickMsg('');
+  $('#start-btn').textContent = '내 방으로 들어가기';
+  drawLanding();
+}
+
+let gameReady = false;
 function enterGame() {
   $('#landing').hidden = true;
   $('#game').hidden = false;
   $('#hud-name').textContent = `🙂 ${user.nickname}`;
+  if (gameReady) { stage.resize(); enterRoom('center'); return; }
+  gameReady = true;
   stage = new Stage();
   bindStage();
   bindSocket();
@@ -84,6 +136,7 @@ async function fade(fn) {
 
 function setHud() {
   $('#hud-place').textContent = PLACES[place].name;
+  $('#home-link').hidden = place !== 'room'; // '← 홈으로'는 개인 방에서만
   $('#my-wishes-btn').hidden = place === 'room';
   $('#chat-form').hidden = place !== 'rooftop';
   // 화면 아래 띠는 옥상 채팅 입력창이 필요할 때만 (상시 조작 설명은 두지 않음)
@@ -275,6 +328,12 @@ function bindSocket() {
   net.on('counts', (c) => { counts = c; });
   net.on('player:join', (p) => { if (place !== 'room') stage.upsert(p.sid, toEntity(p)); });
   net.on('player:leave', ({ sid }) => { if (place !== 'room') stage.remove(sid); });
+  net.on('player:rename', ({ sid, nickname }) => {
+    const e = stage.entities.get(sid);
+    if (!e) return;
+    e.nickname = nickname;
+    e.tag.textContent = e.me ? `${nickname} (나)` : nickname;
+  });
   net.on('player:move', (m) => { if (place !== 'room' && stage.entities.has(m.sid)) stage.upsert(m.sid, { points: m.points, startAt: m.startAt, seat: m.seat }); });
   net.on('chat', ({ sid, text }) => { if (place === 'rooftop') stage.say(sid, text); });
   net.on('wish:float', ({ sid, wishId, until }) => { const e = stage.entities.get(sid); if (e && place !== 'room') e.wish = { wishId, until: localTime(until) }; });
@@ -292,6 +351,7 @@ function onReconnect() {
 }
 
 function bindHud() {
+  $('#home-link').addEventListener('click', goLanding);
   $('#my-wishes-btn').addEventListener('click', openMyWishes);
   const seg = new Intl.Segmenter('ko', { granularity: 'grapheme' });
   const len = (s) => [...seg.segment(s)].length;

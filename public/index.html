@@ -7,6 +7,8 @@
   <meta name="description" content="하루의 한 순간을 영상과 한 문장으로 책장에 모으고, 옥상과 공원에서 다른 사람과 시간을 보내는 온라인 공간">
   <meta name="theme-color" content="#1b1426">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/Galmuri11.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/GowunDodum-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -15,6 +17,15 @@
       <canvas id="landing-art" width="160" height="90" aria-hidden="true"></canvas>
       <h1>하루 한 장</h1>
       <p class="lead">하루의 한 순간을 <b>짧은 영상</b>과 <b>한 문장</b>으로 책장에 모으고,<br>옥상과 공원에서 다른 사람과 조용히 시간을 보내는 곳이에요.</p>
+      <div class="nick-row" id="nick-row">
+        <div id="nick-view"><span class="label">닉네임</span> <b id="nick-text">…</b> <button class="btn btn-small" id="nick-edit">변경</button></div>
+        <form id="nick-form" class="row" hidden autocomplete="off">
+          <input id="nick-input" maxlength="24" aria-label="새 닉네임" placeholder="새 닉네임 (최대 12자)">
+          <button class="btn btn-small btn-primary" id="nick-save">저장</button>
+          <button type="button" class="btn btn-small" id="nick-cancel">취소</button>
+        </form>
+        <p id="nick-msg" class="nick-msg" hidden></p>
+      </div>
       <button id="start-btn" class="btn btn-primary btn-big">바로 시작하기</button>
       <p class="fine">설치나 회원가입 없이 게스트로 입장해요. 처음 도착하는 곳은 나만의 방이에요.</p>
       <p id="start-error" class="error" hidden></p>
@@ -24,6 +35,7 @@
   <section id="game" class="game" hidden>
     <header class="hud">
       <div class="hud-left">
+        <button id="home-link" class="btn btn-small home-btn" title="첫 화면으로 (게스트 기록은 그대로)">← 홈으로</button>
         <span id="hud-place" class="place-chip">내 방</span>
         <span id="hud-name" class="name-chip"></span>
       </div>

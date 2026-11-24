@@ -191,21 +191,25 @@ export class Stage {
   }
 
   layoutOverlay() {
-    const k = this.scale;
+    // 테두리를 뺀 실제 캔버스 폭 기준 배율 (테두리까지 넣으면 가장자리 이름표·말풍선이 몇 px 밖으로 나감)
+    const W2 = this.canvas.clientWidth || 320 * this.scale;
+    const k = W2 / 320;
     for (const e of this.entities.values()) {
       const p = this.pos(e);
       const seated = !p.moving && e.seat;
       const footY = seated ? p.y + 2 : p.y;
       const half = (e.tag.offsetWidth || 100) / 2 + 2; // 이름표가 화면 가장자리에서 잘리지 않게
-      e.tag.style.left = `${Math.min(Math.max(p.x * k, half), 320 * k - half)}px`;
+      e.tag.style.left = `${Math.min(Math.max(p.x * k, half), W2 - half)}px`;
       e.tag.style.top = `${(footY + 2) * k}px`;
       // 같은 벤치의 이웃 좌석끼리 이름표가 겹치지 않도록 짝수 좌석은 한 줄 아래로
       const lower = seated && Number(String(e.seat).replace(/\D/g, '')) % 2 === 0;
       e.tag.style.transform = lower ? 'translate(-50%, 115%)' : 'translate(-50%, 0)';
       if (e.bubble) {
         const headTop = footY - (seated ? 15 : 18) - (e.wish && e.wish.until > Date.now() ? 12 : 2);
-        e.bubble.el.style.left = `${Math.min(Math.max(p.x * k, 70), 320 * k - 70)}px`;
-        e.bubble.el.style.top = `${headTop * k - 6}px`;
+        // 말풍선 실제 폭·높이로 무대 안에 들어오게 (좁은 모바일 화면에서 잘리지 않도록)
+        const bw = e.bubble.el.offsetWidth || 160, bh = e.bubble.el.offsetHeight || 40;
+        e.bubble.el.style.left = `${Math.min(Math.max(p.x * k, bw / 2 + 4), W2 - bw / 2 - 4)}px`;
+        e.bubble.el.style.top = `${Math.max(headTop * k - 6, bh + 4)}px`;
       }
     }
     for (const el of this.banners) { el.style.left = `${el.dataset.x * k}px`; el.style.top = `${el.dataset.y * k}px`; }

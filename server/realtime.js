@@ -101,6 +101,19 @@ export function unfloatWish(wishId) {
   }
 }
 
+/** 닉네임 변경을 접속 중인 소켓과 야외 아바타에 반영 (같은 장소 사람들에게 player:rename) */
+export function renameLive(userId, nickname) {
+  if (!io) return;
+  for (const [, s] of io.of('/').sockets) if (s.data.user?.id === userId) s.data.user.nickname = nickname;
+  for (const [placeId, pl] of Object.entries(places)) {
+    for (const p of pl.players.values()) {
+      if (p.userId !== userId) continue;
+      p.nickname = nickname;
+      io.to(placeId).emit('player:rename', { sid: p.sid, nickname });
+    }
+  }
+}
+
 export function notifyUser(userId, event, data) {
   for (const [, s] of io.of('/').sockets) if (s.data.user?.id === userId) s.emit(event, data);
 }
