@@ -54,7 +54,8 @@ test('경우 3: 다시 찾아도 근거 없음 → 관련된 기록을 찾지 �
   const r = await memorySearch({ question: '바다에서 수영한 날이 언제였지?', docs: ex, today: TODAY });
   assert.equal(r.status, 'not_found');
   assert.equal(r.message, '관련된 기록을 찾지 못했어요.');
-  assert.deepEqual(r.trace.map((t) => t.kind + ':' + (t.action || t.found)), ['search:0', 'ai:retry', 'search:0', 'ai:not_found']);
+  assert.deepEqual(r.trace.map((t) => t.kind + ':' + (t.action ?? t.found ?? t.note)), ['search:0', 'ai:retry', 'search:0', 'end:재검색 결과 없음 · 검색 종료']);
+  assert.equal(r.sentToAi.length, 1); // 2차 검색이 0건이면 AI를 다시 부르지 않음 — 화면 표시와 실제 실행이 같아야 함
 });
 
 test('API 실패·키 없음: 상태를 알리고 찾은 기록은 열어볼 수 있게', async () => {

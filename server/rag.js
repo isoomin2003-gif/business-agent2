@@ -232,7 +232,8 @@ export async function memorySearch({ question, docs, today }) {
 
   if (!docs.length) return { ...base, status: 'no_records', message: '아직 검색할 기록이 없어요. 책상에서 오늘의 한 장을 먼저 남겨 보세요.', sources: [], candidates: [] };
   if (!pool.length) {
-    trace.push({ kind: 'search', round: 1, terms: [], range, found: 0, note: '기간 안에 기록이 없음' });
+    trace.push({ kind: 'search', round: 1, terms: [], range, found: 0 });
+    trace.push({ kind: 'end', note: '기간 안에 기록 없음 · 검색 종료 (AI 호출 안 함)' });
     return { ...base, status: 'empty_range', message: `${range.label}(${range.from} ~ ${range.to})에는 남긴 기록이 없어요.`, sources: [], candidates: [] };
   }
 
@@ -264,7 +265,10 @@ export async function memorySearch({ question, docs, today }) {
   const a1 = await decide(1, r1, true);
   if (a1.error) return failed(a1.error, r1);
   if (a1.decision.action === 'answer') return answered(a1.decision, r1);
-  if (a1.decision.action !== 'retry') return { ...base, status: 'not_found', message: NOT_FOUND, sources: [], candidates: r1.map(pub) };
+  if (a1.decision.action !== 'retry') {
+    trace.push({ kind: 'end', note: 'AI가 근거 없음으로 판단 · 검색 종료' });
+    return { ...base, status: 'not_found', message: NOT_FOUND, sources: [], candidates: r1.map(pub) };
+  }
 
   // 2차 검색: AI가 고른 단서로, 같은 기간 안에서
   const q2 = queryTerms(a1.decision.keywords.join(' '));
@@ -272,12 +276,13 @@ export async function memorySearch({ question, docs, today }) {
   trace.push({ kind: 'search', round: 2, terms: q2.words, range, found: r2.length, dates: r2.map((r) => r.date) });
   const merged = [...r2, ...r1.filter((x) => !r2.some((y) => y.id === x.id))].slice(0, TOP_K);
   if (!merged.length) {
-    trace.push({ kind: 'ai', round: 2, action: 'not_found', note: '다시 찾은 기록이 0건이라 AI에 묻지 않음' });
+    trace.push({ kind: 'end', note: '재검색 결과 없음 · 검색 종료' });
     return { ...base, status: 'not_found', message: NOT_FOUND, sources: [], candidates: [] };
   }
   const a2 = await decide(2, merged, false);
   if (a2.error) return failed(a2.error, merged);
   if (a2.decision.action === 'answer') return answered(a2.decision, merged);
+  trace.push({ kind: 'end', note: 'AI가 근거 없음으로 판단 · 검색 종료' });
   return { ...base, status: 'not_found', message: NOT_FOUND, sources: [], candidates: merged.map(pub) };
 }
 

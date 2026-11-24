@@ -15,11 +15,6 @@ import { radio } from './audio/radio.js';
 import * as amb from './audio/ambience.js';
 
 const SCENES = { room, rooftop, park };
-const HINTS = {
-  room: '빈 바닥을 누르면 그곳으로 걸어가요 · 책상: 다이어리 쓰기 · 책장: 지난 기록과 기억 찾기 · 문: 밖으로 나가기',
-  rooftop: '바닥을 누르면 그곳으로 걸어가고, 벤치의 빈자리를 누르면 앉아요. 라디오를 누르면 곡 정보·신청, 오른쪽 계단실 문을 누르면 내 방으로 돌아가요.',
-  park: '산책로나 잔디를 누르면 걸어가요. 벤치에 앉으면 풀벌레와 바람 소리가 들려요. 소원 나무를 누르면 소원을, 오른쪽 산책로 입구를 누르면 내 방으로 돌아가요.',
-};
 const $ = (s) => document.querySelector(s);
 
 let user = null;
@@ -91,7 +86,9 @@ function setHud() {
   $('#hud-place').textContent = PLACES[place].name;
   $('#my-wishes-btn').hidden = place === 'room';
   $('#chat-form').hidden = place !== 'rooftop';
-  $('#hint').textContent = HINTS[place];
+  // 화면 아래 띠는 옥상 채팅 입력창이 필요할 때만 (상시 조작 설명은 두지 않음)
+  $('#bottom').hidden = place !== 'rooftop';
+  stage.resize();
 }
 
 // ───────────── 내 방 (혼자만의 공간, 서버 접속자 수에 포함되지 않음) ─────────────

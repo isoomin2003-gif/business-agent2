@@ -32,7 +32,7 @@ export class Stage {
   on(name, fn) { this.handlers[name] = fn; }
 
   resize() {
-    const hud = 56, bottom = 76;
+    const hud = 56, bottom = document.getElementById('bottom')?.hidden === false ? 64 : 8;
     const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || Infinity, window.visualViewport?.width || Infinity);
     const vh = window.visualViewport?.height || window.innerHeight;
     const mobile = vw < 640;
@@ -229,7 +229,7 @@ export class Stage {
         if (x >= s.x - 9 - pad && x <= s.x + 9 + pad && y >= s.y - 16 - pad && y <= s.y + 6 + pad) {
           const holder = this.seatsTaken.get(id);
           const mine = holder && this.entities.get(holder)?.me;
-          return { type: 'seat', id, label: mine ? '내 자리' : holder ? '누군가 앉아 있어요' : '여기 앉기' };
+          return { type: 'seat', id, label: mine ? '내 자리' : holder ? '누군가 앉아 있어요' : '앉기' };
         }
       }
     }
