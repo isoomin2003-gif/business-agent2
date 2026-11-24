@@ -1,6 +1,6 @@
 // 옥상 라디오: 서버가 곡과 시작 시각을 정하고 모든 청취자가 같은 지점을 재생합니다.
 import crypto from 'node:crypto';
-import { TRACKS, TRACK_BY_ID } from './tracks.js';
+import { BASE_TRACKS, TRACK_BY_ID } from './tracks.js';
 
 export const MAX_QUEUE = 20;
 
@@ -23,7 +23,8 @@ export function createRadio(onChange) {
   function next() {
     const req = state.queue.shift();
     if (req) return start(req.trackId, req);
-    const t = TRACKS[state.defaultIndex % TRACKS.length];
+    // 신청곡이 없으면 기본 방송 4곡을 순서대로
+    const t = BASE_TRACKS[state.defaultIndex % BASE_TRACKS.length];
     state.defaultIndex++;
     start(t.id);
   }

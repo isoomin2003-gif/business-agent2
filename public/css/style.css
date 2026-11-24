@@ -215,3 +215,10 @@ table.credits td, table.credits th { border-bottom: 1px solid var(--border); pad
 .dots { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; animation: pulse 1s ease-in-out infinite; }
 .trace ol { padding-left: 20px; line-height: 1.7; font-size: 14px; margin: 8px 0; }
 .cards-label { font-size: 13px; margin: 6px 0 0; }
+
+/* AI DJ 추천 카드 */
+.dj-card { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; }
+.dj-card .t { font-size: 18px; font-weight: 800; color: var(--pink); }
+.dj-reason { margin: 6px 0 0; line-height: 1.5; }
+.dj-act .btn { white-space: nowrap; }
+@media (max-width: 520px) { .dj-card { grid-template-columns: 1fr; } }

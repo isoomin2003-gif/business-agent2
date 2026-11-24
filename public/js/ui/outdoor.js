@@ -34,8 +34,17 @@ export async function openRadio({ getState, myUserId }) {
   const m = openModal({
     onClose: () => cleanup(),
     title: '📻 옥상 라디오', label: '라디오',
-    html: `<div class="tabs"><button class="tab on" data-tab="now">지금 나오는 곡</button><button class="tab" data-tab="req">다음 곡 신청하기</button><button class="tab" data-tab="info">음원 정보</button></div>
-      <div data-pane="now"></div><div data-pane="req" hidden></div><div data-pane="info" hidden></div>`,
+    html: `<div class="tabs"><button class="tab on" data-tab="now">지금 나오는 곡</button><button class="tab" data-tab="dj">🎧 AI DJ</button><button class="tab" data-tab="req">다음 곡 신청하기</button><button class="tab" data-tab="info">음원 정보</button></div>
+      <div data-pane="now"></div>
+      <div data-pane="dj" hidden>
+        <form class="row" id="dj-form" autocomplete="off">
+          <input type="text" id="dj-q" maxlength="120" style="flex:1;min-width:200px" placeholder="밤에 산책할 때 들을 곡인데 너무 쓸쓸하지 않았으면 좋겠어" aria-label="AI DJ에게 요청">
+          <button class="btn btn-primary" id="dj-go">추천받기</button>
+        </form>
+        <p class="ai-note">지금 기분이나 상황을 말하면 AI DJ가 라디오 곡 중에서 골라 줘요. 추천은 나에게만 보이고, 신청하기를 눌러야 대기열에 들어가요.</p>
+        <div id="dj-out" aria-live="polite"></div>
+      </div>
+      <div data-pane="req" hidden></div><div data-pane="info" hidden></div>`,
   });
   const show = (tab) => {
     m.$$('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
@@ -71,10 +80,50 @@ export async function openRadio({ getState, myUserId }) {
       if (r?.ok) { toast(`신청 완료! 대기 ${r.position}번째예요 ♪`); render(); show('now'); } else { m.$('#r-status').textContent = r?.message || '신청하지 못했어요.'; m.$('#r-status').className = 'status err'; b.disabled = false; }
     }));
   };
-  m.$('[data-pane="info"]').innerHTML = `<p class="muted" style="font-size:14px">선곡표의 모든 곡은 제작자가 원본 배포 페이지에서 CC0(퍼블릭 도메인)으로 공개한 녹음이에요.</p>
+  m.$('[data-pane="info"]').innerHTML = `<p class="muted" style="font-size:14px">모든 곡은 제작자가 원본 배포 페이지에서 CC0(퍼블릭 도메인)으로 공개한 녹음이에요. ★는 신청곡이 없을 때 나오는 기본 방송이에요.</p>
     <table class="credits"><tr><th>곡</th><th>제작자</th><th>라이선스</th></tr>
-    ${tracksCache.map((t) => `<tr><td><a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${esc(t.title)}</a><div class="muted" style="font-size:12px">${esc(t.note)}</div></td><td>${esc(t.artist)}</td>
+    ${tracksCache.map((t) => `<tr><td>${t.base ? '★ ' : ''}<a href="${esc(t.sourceUrl)}" target="_blank" rel="noopener">${esc(t.title)}</a><div class="muted" style="font-size:12px">${esc([t.genre, ...t.moods].join(' · '))}${t.instruments.length ? ` · ${esc(t.instruments.join(', '))}` : ''}${t.bpm ? ` · ${t.bpm}BPM` : ''}</div><div class="muted" style="font-size:11px">${esc(t.note)}</div></td><td>${esc(t.artist)}</td>
       <td><a href="${esc(t.licenseUrl)}" target="_blank" rel="noopener">${esc(t.license)}</a></td></tr>`).join('')}</table>`;
+  // ── AI DJ: 추천 카드(나에게만) → 신청하기를 눌렀을 때만 공용 대기열에 추가 ──
+  let djBusy = false;
+  const djOut = m.$('#dj-out');
+  const djTrace = (r) => (r.demo && r.trace ? `<details class="trace"><summary>추천 과정 보기 <span class="badge">시연 모드</span></summary><ol>${r.trace.map((t) => {
+    if (t.kind === 'search') return `<li><b>${t.round}차 검색</b> · 조건 <code>${esc(JSON.stringify(t.args))}</code> → <b>${t.found}곡</b>${t.ids.length ? ` (${t.ids.map(esc).join(', ')})` : ''}</li>`;
+    if (t.kind === 'pick') return `<li><b>선택</b> · <code>${esc(t.id)}</code></li>`;
+    if (t.kind === 'error') return `<li><b>연결 실패</b> · ${esc(t.status)}${t.code ? ` ${t.code}` : ''}</li>`;
+    return `<li><b>${esc(t.note || '추천 없음')}</b></li>`;
+  }).join('')}</ol></details>` : '');
+  async function recommendNow() {
+    const text = m.$('#dj-q').value.trim();
+    if (!text || djBusy) return;
+    djBusy = true; m.$('#dj-go').disabled = true;
+    djOut.innerHTML = '<div class="result searching"><span class="dots"></span> 어울리는 곡을 찾고 있어요…</div>';
+    let demoKey = '';
+    try { demoKey = localStorage.getItem('haruDemoKey') || ''; } catch { /* */ }
+    const r = await net.emit('dj:recommend', { text, ...(demoKey ? { demoKey } : {}) });
+    djBusy = false; m.$('#dj-go').disabled = false;
+    if (!r?.ok) { djOut.innerHTML = `<div class="result"><p class="answer">${esc(r?.message || '지금은 추천할 수 없어요. 잠시 후 다시 시도해 주세요.')}</p></div>`; return; }
+    if (r.status === 'ok') {
+      djOut.innerHTML = `<div class="result dj-card" data-status="ok">
+        <div class="dj-info"><div class="t">♪ ${esc(r.track.title)}</div><div class="muted">${esc(r.track.artist)}</div><p class="dj-reason">${esc(r.reason)}</p></div>
+        <div class="dj-act"><button class="btn btn-primary" id="dj-req" data-id="${esc(r.track.id)}">신청하기</button></div>
+        <p class="status" id="dj-status" style="grid-column:1/-1;margin:0"></p></div>${djTrace(r)}`;
+      m.$('#dj-req').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true; btn.textContent = '신청 중…';
+        const res = await net.emit('radio:request', { trackId: btn.dataset.id });
+        if (res?.ok) { btn.textContent = '신청 완료 ✓'; m.$('#dj-status').textContent = `대기 ${res.position}번째예요. 지금 곡이 끝나면 순서대로 나와요.`; m.$('#dj-status').className = 'status ok'; render(); }
+        else { btn.disabled = false; btn.textContent = '신청하기'; m.$('#dj-status').textContent = res?.message || '신청하지 못했어요.'; m.$('#dj-status').className = 'status err'; }
+      });
+    } else if (r.status === 'none') {
+      djOut.innerHTML = `<div class="result" data-status="none"><p class="answer">라디오 곡 중에서 딱 맞는 곡을 찾지 못했어요.</p><p class="muted hint-line">분위기나 상황을 조금 다르게 말해 주세요. 예) 차분한, 밝은, 피아노, 비 오는 밤</p></div>${djTrace(r)}`;
+    } else {
+      djOut.innerHTML = `<div class="result" data-status="error"><p class="answer">지금은 AI DJ에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.</p><button class="btn btn-small" id="dj-retry">다시 시도</button></div>${djTrace(r)}`;
+      m.$('#dj-retry').addEventListener('click', recommendNow);
+    }
+  }
+  m.$('#dj-form').addEventListener('submit', (e) => { e.preventDefault(); recommendNow(); });
+
   render();
   const timer = setInterval(() => { if (!m.$('[data-pane="now"]').hidden) render(); }, 1000);
   const off = net.on('radio', () => render());

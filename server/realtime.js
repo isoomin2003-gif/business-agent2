@@ -3,6 +3,8 @@ import { Server } from 'socket.io';
 import { PLACES, OUTDOOR, routeTo, positionAt } from '../public/js/shared/places.js';
 import { COOKIE, parseCookieHeader, userFromToken } from './auth.js';
 import { createRadio } from './radio.js';
+import { recommend } from './dj.js';
+import { isAdminKey } from './auth.js';
 import { config } from './config.js';
 
 export const CHAT_MAX = 50;
@@ -184,6 +186,22 @@ export function setupRealtime(server) {
       lastChat = Date.now();
       io.to('rooftop').emit('chat', { sid: socket.id, text, at: Date.now() });
       cb?.({ ok: true });
+    });
+
+    // AI DJ 추천: 요청한 사람에게만 응답(ack). 공용 대기열은 건드리지 않음 — 신청은 radio:request로 따로
+    let djTimes = [];
+    socket.on('dj:recommend', async (data, cb) => {
+      if (typeof cb !== 'function') return;
+      if (socket.data.place !== 'rooftop') return cb({ ok: false, message: '옥상 라디오에서만 추천받을 수 있어요.' });
+      const text = String(data?.text ?? '').replace(/\s+/g, ' ').trim();
+      if (!text) return cb({ ok: false, message: '지금 기분이나 상황을 적어 주세요.' });
+      const now = Date.now();
+      djTimes = djTimes.filter((t) => now - t < 60000);
+      if (djTimes.length >= 8) return cb({ ok: false, message: '잠시 후 다시 물어봐 주세요.' });
+      djTimes.push(now);
+      const r = await recommend(text);
+      const demo = isAdminKey(data?.demoKey);
+      cb({ ok: true, status: r.status, track: r.track || null, reason: r.reason || '', ...(demo ? { trace: r.trace, demo: true } : {}) });
     });
 
     socket.on('radio:request', (data, cb) => {

@@ -39,7 +39,7 @@
 | 🏠 **내 방** | 빈 바닥을 누르면 가구를 돌아 그곳까지 걸어가 멈춤. 책상(‘다이어리 쓰기’) · 책장(‘내 책장’) · 문(‘밖으로 나가기’)에 마우스를 올리면 안내가 뜨고, 누르면 아바타가 걸어가 해당 기능을 엽니다. |
 | ✍️ **오늘의 한 장** | PC에서는 영상 파일 선택, 모바일에서는 갤러리 선택·직접 촬영, 또는 샘플 영상 → 한 문장 → 저장. 하루 한 페이지, 오늘 페이지는 다시 열어 수정. 선택 취소·업로드 실패 시 문장 유지. |
 | 📚 **월별 책장** | 기록이 있는 달마다 책 한 권. 책을 고르면 책상에 앉아 펼쳐지고, 페이지마다 날짜·문장·영상(재생), 이전/다음 페이지, 🗑 내 페이지 삭제(확인 후 문장·영상 함께 삭제). 🔒 본인만 열람. |
-| 🌃 **옥상** | 바닥 타일을 누르면 벤치·라디오를 돌아 그곳까지 걷고(걷는 중 다시 누르면 방향 전환), 벤치 빈자리를 누르면 앉기, 50자 말풍선 대화, 모두 같은 곡·같은 지점을 듣는 라디오(개인 음량·음소거), 선곡표에서 다음 곡 신청, 음원 정보 확인. |
+| 🌃 **옥상** | 바닥 타일을 누르면 벤치·라디오를 돌아 그곳까지 걷고(걷는 중 다시 누르면 방향 전환), 벤치 빈자리를 누르면 앉기, 50자 말풍선 대화, 모두 같은 곡·같은 지점을 듣는 라디오(개인 음량·음소거), **🎧 AI DJ**에게 기분·상황을 말해 추천받기(나에게만 표시) → 신청하기, 선곡표에서 다음 곡 신청, 음원 정보 확인. |
 | 🌳 **공원** | 산책로·잔디를 누르면 나무·벤치를 돌아 걸어가기. 음악·채팅 없이 조용히 함께 쉬기. 걸을 때 발소리, 벤치에선 풀벌레·바람 소리. 소원 나무를 누르면 공개 소원 읽기/걸기, 공감·응원. 내가 건 소원은 나무·‘내 소원’에서 🗑 삭제(두 번 눌러 확인). |
 | 🌠 **별똥별** | 서버가 장소별로 정한 같은 순간에 모두에게 지나감 → ‘소원 빌기’(공개/비공개, 공원에선 ‘소원 나무에도 걸기’). 공개 소원은 머리 위 ✦를 눌러 읽고 반응. |
 | 🔎 **기억 찾기** | 책장에서 자연어로 질문 → 내 일기(지정 기간 안)를 검색 → AI가 근거가 충분하면 답하고, 부족하면 다른 단서로 한 번 더 검색. 결과는 짧은 답과 일기 카드(날짜·문장)만, 카드를 누르면 그날의 영상 페이지. 검색 과정은 발표용 시연 모드에서만 표시. |
@@ -124,7 +124,8 @@ PC에서는 마우스로, 휴대폰에서는 손가락으로 누르면 됩니다
 - **라디오**를 누르면 작은 창이 열려요.
   - **지금 나오는 곡**: 곡 정보와 다음 순서
   - **다음 곡 신청하기**: 선곡표에서 골라요. 한 사람당 한 곡까지 기다릴 수 있고, 지금 곡이 끝나면 신청한 순서대로 나와요. 내 곡이 시작되면 라디오 위에 ‘○○ 님의 신청곡 ♪’이 떠요.
-  - **음원 정보**: 곡 제목, 만든 사람, 출처, 라이선스
+  - **🎧 AI DJ**: “밤에 산책할 때 들을 곡인데 너무 쓸쓸하지 않았으면 좋겠어”처럼 기분이나 상황을 적으면, 라디오 곡 중에서 어울리는 곡 하나를 골라 **곡 제목·제작자·추천 이유 한 문장**과 **신청하기** 버튼을 보여 줘요. 추천은 나에게만 보이고, ‘틀어줘’라고 해도 **신청하기를 눌러야** 대기열에 들어가요. 맞는 곡이 없으면 다르게 말해 달라고 안내해요.
+  - **음원 정보**: 곡 제목, 만든 사람, 장르·분위기·악기·BPM, 출처, 라이선스
 
 #### 🌳 공원
 - 음악과 채팅이 없는 조용한 곳이에요. 걸을 땐 발소리가, 벤치에 앉으면 풀벌레와 바람 소리가 들려요.
@@ -228,6 +229,23 @@ AI가 고르는 새 단서는 실행할 때마다 조금 달라질 수 있습니
 5. `바다에서 수영한 날이 언제였지?` → “관련된 기록을 찾지 못했어요”, 검색 과정 마지막 줄 `재검색 결과 없음 · 검색 종료`
 6. (선택) API 실패 상황: 로컬에서 모의 서버(`node test/mock-openrouter.js 3300`)와 `OPENROUTER_BASE_URL=http://localhost:3300/fail/api/v1` 로 실행하면 `AI 연결 실패` 상태를 재현할 수 있습니다.
 
+## 4-1. 옥상 라디오 AI DJ — OpenRouter 도구 호출
+
+옥상 라디오의 **🎧 AI DJ** 탭은 사용자의 기분·상황 요청을 AI가 해석해 **실제 음원 목록을 조회하는 도구(`search_tracks`)를 호출**하고, 결과 중 한 곡을 골라 추천합니다(`server/dj.js`).
+
+| 단계 | 일어나는 일 |
+|---|---|
+| 1. 요청 해석 | AI가 요청을 검색 조건으로 바꿈: 분위기(`moods`), 장면(`scenes`), 빠르기(`tempo`), 악기(`instruments`), 피할 분위기(`avoid_moods`). 선택지는 음원 목록에 실제로 있는 값만 도구 정의(enum)로 제공 |
+| 2. 도구 호출 → 서버 검색 | 서버가 `server/tracks.js` 16곡에서 조건에 맞는 곡을 점수순 최대 5곡 돌려줌(피할 분위기가 있는 곡은 제외) |
+| 3. 선택 또는 재검색 | 어울리는 곡이 있으면 하나 고름. 없으면 요청의 핵심(예: ‘밤’, ‘쓸쓸하지 않게’)을 유지한 채 조건을 바꿔 **한 번 더** 검색(최대 2회) |
+| 4. 결과 | 곡 제목·제작자·추천 이유 한 문장 + **신청하기**. 끝까지 없으면 “딱 맞는 곡을 찾지 못했어요” |
+
+- **검증**: AI가 고른 곡이 실제 검색 결과에 있던 곡인지 서버가 확인하고, 아니면 추천하지 않습니다. AI는 곡을 들을 수 없으므로 추천 이유는 목록의 분위기·장면·빠르기·악기 정보만 근거로 쓰도록 지시합니다.
+- **나에게만 / 버튼으로만**: 추천은 요청한 사람의 소켓 응답으로만 돌아가고(다른 사람 화면·공용 대기열 변화 없음), ‘틀어줘’라고 해도 **신청하기**를 눌러 서버가 등록을 확인해야 `신청 완료 ✓`. 기존 **1인 1곡 대기** 규칙이 그대로 적용됩니다.
+- **재생**: 현재 곡은 끝까지, 신청곡은 대기 순서대로. 같은 옥상의 모두가 같은 곡의 같은 지점을 듣고, 중간에 들어온 사람도 현재 지점부터 듣습니다.
+- **외부 전송**: 요청 문장과 음원 목록 정보(제목·분위기 등)만 OpenRouter로 보냅니다. 닉네임·계정·일기 정보는 보내지 않습니다.
+- **시연 모드**: `/demo` 에서 시연 모드를 켠 브라우저에서는 추천 아래 **추천 과정 보기**(검색 조건, 찾은 곡 수, 고른 곡)가 보입니다.
+
 ## 5. 기술 구성과 실행 방법
 
 ### 사용 기술
@@ -238,7 +256,7 @@ AI가 고르는 새 단서는 실행할 때마다 조금 달라질 수 있습니
 | 영상 저장소 | 배포: **Supabase Storage 비공개 버킷** `diary-videos` — 서버가 소유자를 확인한 뒤 5분짜리 서명 주소로 재생<br>로컬: `DATA_DIR/videos/<사용자ID>/` (공개 폴더 밖), 소유자 확인 후 Range 스트리밍 |
 | 프런트엔드 | 빌드 도구 없는 바닐라 JS 모듈 + Canvas 2D 픽셀 아트(320×180 → 정수 배율 확대), 공원 자연음은 Web Audio로 합성 |
 | AI | OpenRouter Chat Completions (기본 모델 `anthropic/claude-haiku-5.5`, 환경변수로 변경) |
-| 테스트 | `node:test` 22개(서버·RAG·길찾기·재시작 보존. SQLite 모드 21개 + `TEST_DATABASE_URL` 지정 시 PostgreSQL 보존 테스트 1개), Playwright(브라우저 시나리오 — 개발 중 실행) |
+| 테스트 | `node:test` 28개(서버·RAG·AI DJ·길찾기·재시작 보존. SQLite 모드 27개 + `TEST_DATABASE_URL` 지정 시 PostgreSQL 보존 테스트 1개), Playwright(브라우저 시나리오 — 개발 중 실행) |
 
 ### 필요한 프로그램
 - **Node.js 22.13 이상** (`node:sqlite` 사용, 개발·검증은 22.23.5) · npm 10 이상
@@ -358,15 +376,29 @@ docs/screenshots/
 
 ## 6. 출처와 개발 현황
 
-### 라디오 음원 (모두 CC0 1.0)
-제작자가 **원본 배포 페이지에서 CC0로 공개했음을 확인한 곡만** 넣었습니다(확인일 2026-11-24). 앱의 라디오 → `음원 정보` 탭에서도 같은 내용을 볼 수 있습니다.
+### 라디오 음원 (16곡, 모두 CC0 1.0)
+모든 곡은 OpenGameArt **원본 배포 페이지의 라이선스 표시가 CC0뿐인지**, 받은 **녹음 파일이 그 페이지에 실제로 올라 있는지** 확인했고(2026-11-24), 받은 파일을 ffmpeg로 **처음부터 끝까지 디코딩해 재생 가능**한지 확인한 뒤 96kbps MP3로 다시 인코딩했습니다(CC0이므로 변형 허용, 앨범 이미지·메타데이터 제거). ★ 4곡은 신청곡이 없을 때 나오는 **기본 방송**이고, 16곡 모두 신청과 AI DJ 추천 대상입니다. 앱의 라디오 → `음원 정보` 탭에서도 볼 수 있습니다.
 
-| 곡 | 제작자 | 장르 | 원본 배포 페이지 | 라이선스 | 비고 |
-|---|---|---|---|---|---|
-| Chill lofi inspired | omfgdude | 로파이 | <https://opengameart.org/content/chill-lofi-inspired> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 96kbps 재인코딩 |
-| Emotional piano loop | extenz | 피아노 | <https://opengameart.org/content/emotional-piano-loop> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 27.8초 루프를 4회 이어 붙여 MP3 변환 |
-| Lofi again | omfgdude | 로파이 | <https://opengameart.org/content/lofi-again> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | OGG→MP3 변환 |
-| November Snow | cynicmusic (The Cynic Project) | 앰비언트 | <https://opengameart.org/content/november-snow> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 96kbps 재인코딩 (제작자 요청에 따라 크레딧 표기) |
+| 곡 | 제작자 | 장르 | 분위기 / 장면 | 빠르기 | 주요 악기 | 원본 배포 페이지 | 라이선스 |
+|---|---|---|---|---|---|---|---|
+| ★ Chill lofi inspired | omfgdude | 로파이 | 편안한, 차분한 | 보통 (103 BPM) | 피아노, 드럼 | <https://opengameart.org/content/chill-lofi-inspired> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| ★ Emotional piano loop | extenz | 피아노 | 감성적인, 쓸쓸한 | 빠름 (136 BPM) | 피아노 | <https://opengameart.org/content/emotional-piano-loop> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| ★ Lofi again | omfgdude | 로파이 | 편안한, 차분한 | 빠름 (117 BPM) | 신시사이저, 드럼 | <https://opengameart.org/content/lofi-again> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| ★ November Snow | cynicmusic (The Cynic Project) | 앰비언트 | 차분한, 몽환적인, 편안한 / 눈, 겨울 | 느림 (123 BPM) | 신시사이저, 피아노 | <https://opengameart.org/content/november-snow> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Feel good slow ambient track with a beat. | annandistance | 앰비언트 | 따뜻한, 아늑한, 밝은, 편안한 / 연못 | 느림 (96 BPM) | 신시사이저, 드럼 | <https://opengameart.org/content/feel-good-slow-ambient-track-with-a-beat> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Catmint | Kistol | 피아노 | 차분한, 그리운, 쓸쓸한 / 마을 | 느림 (89 BPM) | 피아노 | <https://opengameart.org/content/catmint> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Etirwer | Kistol | 어쿠스틱 | 차분한, 소박한 | 느림 (70 BPM) | 나일론 기타 | <https://opengameart.org/content/etirwer> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Hot Springs Town | Kistol | 월드 | 아늑한, 경쾌한, 편안한 / 마을, 온천 | 빠름 (123 BPM) | 고토 | <https://opengameart.org/content/hot-springs-town> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| happy lofi day | Tarush Singhal | 로파이 | 밝은, 기분 좋은 | 보통 (99 BPM) | 드럼 | <https://opengameart.org/content/happy-lofi-day> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| LaDaDa Guitar | Pro Sensory | 재즈 | 차분한, 편안한 | 보통 (99 BPM) | 기타 | <https://opengameart.org/content/ladada-guitar> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Funky Hip Hop Lofi Jam | omfgdude | 로파이 힙합 | 경쾌한, 신나는 | 느림 (86 BPM) | 키보드, 드럼 | <https://opengameart.org/content/funky-hip-hop-lofi-jam> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Friends, 2018 | Loyalty Freak Music | 뮤직박스 | 차분한, 다정한 | 느림 (89 BPM) | 뮤직박스 | <https://opengameart.org/content/friends-2018> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Champ de tournesol | Loyalty Freak Music | 어쿠스틱 | 산뜻한, 다정한 / 마을 | 보통 (108 BPM) | 기타, 슬라이드 기타 | <https://opengameart.org/content/champ-de-tournesol> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Contemplation | Joth | 앰비언트 | 사색적인, 쓸쓸한, 차분한 | 느림 (박자감 약함) | (설명에 없음) | <https://opengameart.org/content/contemplation-0> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Fantasy: Rising Moon | RandomMind | 판타지 | 신비로운, 차분한, 서늘한 / 밤, 바람, 겨울 | 보통 (103 BPM) | (설명에 없음) | <https://opengameart.org/content/fantasy-rising-moon> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Agaisnt Wanderlust | poinl | 앰비언트 | 평화로운, 아늑한, 밝은 / 밤, 모닥불 | 느림 (박자감 약함) | (설명에 없음) | <https://opengameart.org/content/agaisnt-wanderlust> | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+
+**추천용 정보의 근거** — 분위기·장면·악기는 제작자가 원본 페이지에 단 **태그와 설명**을 옮겼고(설명에 악기가 없으면 비워 둠), BPM은 음원을 직접 **분석**(온셋 포락선 자기상관)해 측정했습니다. 제작자가 BPM을 밝힌 두 곡은 측정값과 일치했습니다(Friends, 2018: 표기 90 / 측정 89, Emotional piano loop: 표기 138 / 측정 136). 빠르기는 측정 BPM 기준(느림 < 90, 보통 90–115, 빠름 > 115)이고, 제작자가 slow·downtempo라고 밝힌 곡과 박자감이 거의 없는 앰비언트는 ‘느림’으로 분류했습니다. 곡마다 근거 문장은 `server/tracks.js` 의 `basis` 에 있습니다.
 
 검색 중 찾았지만 CC-BY(저작자 표시 필요)였던 곡(Night Calm, Peaceful 1am in May, Purrple Cat 앨범 등)은 요구 조건에 맞지 않아 **제외**했습니다.
 
@@ -379,7 +411,7 @@ docs/screenshots/
 | 글꼴 | 외부 글꼴 없이 사용자 기기의 한글 시스템 글꼴 사용 |
 
 ### 개발 현황
-**✅ 실제로 동작을 확인한 기능** (로컬 서버 + Playwright 브라우저 자동화, `npm test` 통과: SQLite 모드 21개, PostgreSQL 모드 22개)
+**✅ 실제로 동작을 확인한 기능** (로컬 서버 + Playwright 브라우저 자동화, `npm test` 통과: SQLite 모드 27개)
 - ① 링크 입장 → 다이어리 저장 → 새로고침 → 책장에서 같은 영상 재생 (파일 선택 취소·잘못된 파일 업로드 후 문장 유지 포함)
 - ② 분리된 두 브라우저 세션이 각자 방에서 출발해 같은 옥상 벤치에 나란히 앉음, 동시 좌석 클릭 시 한 명만 착석, 말풍선이 두 화면에서 해당 아바타 위에 표시, 51자 거부
 - ③ 신청곡이 현재 곡 종료 후 두 화면에서 같은 곡·같은 지점(오차 약 0.05초)으로 시작, 신청곡 알림, 한쪽 음소거 중에도 다른 쪽 재생 지속, 1인 1곡·미등록 곡 ID 거부
