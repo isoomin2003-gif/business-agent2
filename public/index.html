@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>하루 한 장</title>
+  <meta name="description" content="하루의 한 순간을 영상과 한 문장으로 책장에 모으고, 옥상과 공원에서 다른 사람과 시간을 보내는 온라인 공간">
+  <meta name="theme-color" content="#1b1426">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main id="landing" class="landing">
+    <div class="landing-card">
+      <canvas id="landing-art" width="160" height="90" aria-hidden="true"></canvas>
+      <h1>하루 한 장</h1>
+      <p class="lead">하루의 한 순간을 <b>짧은 영상</b>과 <b>한 문장</b>으로 책장에 모으고,<br>옥상과 공원에서 다른 사람과 조용히 시간을 보내는 곳이에요.</p>
+      <button id="start-btn" class="btn btn-primary btn-big">바로 시작하기</button>
+      <p class="fine">설치나 회원가입 없이 게스트로 입장해요. 처음 도착하는 곳은 나만의 방이에요.</p>
+      <p id="start-error" class="error" hidden></p>
+    </div>
+  </main>
+
+  <section id="game" class="game" hidden>
+    <header class="hud">
+      <div class="hud-left">
+        <span id="hud-place" class="place-chip">내 방</span>
+        <span id="hud-name" class="name-chip"></span>
+      </div>
+      <div class="hud-right">
+        <div id="radio-controls" class="radio-controls" hidden>
+          <button id="radio-power" class="btn btn-small btn-glow" hidden>📻 라디오 켜기</button>
+          <button id="radio-mute" class="btn btn-small" title="음소거">🔊</button>
+          <input id="radio-volume" type="range" min="0" max="1" step="0.05" aria-label="라디오 음량">
+        </div>
+        <button id="my-wishes-btn" class="btn btn-small" hidden>내 소원</button>
+        <button id="home-btn" class="btn btn-small" hidden>🏠 내 방으로</button>
+      </div>
+    </header>
+    <div id="stage" class="stage">
+      <canvas id="canvas" width="320" height="180"></canvas>
+      <div id="overlay" class="overlay"></div>
+      <div id="tooltip" class="tooltip" hidden></div>
+      <div id="fade" class="fade"></div>
+    </div>
+    <footer class="bottom">
+      <form id="chat-form" class="chat-form" hidden autocomplete="off">
+        <input id="chat-input" maxlength="80" placeholder="옥상에 있는 사람들에게 한마디 (최대 50자)" aria-label="대화 입력">
+        <span id="chat-count" class="counter">0/50</span>
+        <button class="btn btn-primary">말하기</button>
+      </form>
+      <p id="hint" class="hint"></p>
+    </footer>
+  </section>
+
+  <div id="modal-root"></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <audio id="radio-audio" preload="auto"></audio>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

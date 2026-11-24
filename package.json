@@ -1,0 +1,27 @@
+{
+  "name": "haru-hanjang",
+  "version": "1.0.0",
+  "description": "하루 한 장 — 영상 다이어리와 함께 쉬는 옥상·공원",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning server/index.js",
+    "dev": "node --watch --no-warnings=ExperimentalWarning server/index.js",
+    "migrate": "node --no-warnings=ExperimentalWarning server/migrate.js",
+    "test": "node --no-warnings=ExperimentalWarning --test test/"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^4.22.3",
+    "multer": "^2.5.0",
+    "socket.io": "^4.8.4"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "private": true
+}
