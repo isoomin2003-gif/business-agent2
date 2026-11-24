@@ -5,6 +5,7 @@
 | 바로가기 | 상태 |
 |---|---|
 | 🌐 **배포 사이트** | ⏳ **배포 전** — 배포 설정(Dockerfile·fly.toml·render.yaml)은 준비되어 있고, 배포 후 검증한 실제 주소로 이 칸을 갱신합니다. |
+| 📦 GitHub 저장소 | <https://github.com/isoomin2003-gif/business-agent2> |
 | 💻 로컬 체험 | `npm install && npm start` → <http://localhost:3000> ([실행 방법](#5-기술-구성과-실행-방법)) |
 | 🧠 수업 내용 적용 | 책장의 **‘기억 찾기’** = 7주차 RAG + 5주차 OpenRouter API ([설명](#4-수업-내용-적용--기억-찾기)) |
 
@@ -124,7 +125,7 @@
 
 ### 새 환경에서 실행
 ```bash
-git clone <이 저장소 주소> haru-hanjang
+git clone https://github.com/isoomin2003-gif/business-agent2 haru-hanjang
 ```
 ```bash
 cd haru-hanjang
