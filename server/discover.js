@@ -17,6 +17,8 @@ export const MAX_PICKS = 3;
 const MAX_SEARCHES = 2;
 const MIN_MS = 45_000, MAX_MS = 480_000;
 
+// Openverse 제목·이름은 HTML 엔티티로 이스케이프되어 오는 경우가 있어 원래 글자로 되돌림
+const decode = (s) => String(s || '').replace(/&(amp|lt|gt|quot|#39|apos);/g, (m, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'" }[e])).trim();
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
 const BASE_KEYS = new Set(TRACKS.map((t) => `${norm(t.title)}|${norm(t.artist)}`));
 
@@ -26,9 +28,9 @@ function toCandidate(r) {
   if (!r.url || !(/^https:\/\//.test(r.url) || /^http:\/\/127\.0\.0\.1:/.test(r.url)) || !r.duration || r.duration < MIN_MS || r.duration > MAX_MS) return null;
   if (BASE_KEYS.has(`${norm(r.title)}|${norm(r.creator)}`)) return null; // 기본 수록곡과 같은 곡
   return {
-    id: `ov:${r.id}`, source: r.source || r.provider, title: String(r.title || '').trim(), artist: String(r.creator || '').trim() || '(작자 미상)',
+    id: `ov:${r.id}`, source: r.source || r.provider, title: decode(r.title), artist: decode(r.creator) || '(작자 미상)',
     audioUrl: r.url, sourceUrl: r.foreign_landing_url || '', license: r.license, licenseVersion: r.license_version || '',
-    licenseUrl: r.license_url || '', attribution: r.attribution || '', durationMs: r.duration,
+    licenseUrl: r.license_url || '', attribution: decode(r.attribution), durationMs: r.duration,
     genres: (r.genres || []).slice(0, 4), tags: (r.tags || []).map((t) => t.name).filter(Boolean).slice(0, 10),
   };
 }
@@ -48,19 +50,18 @@ async function openverseQuery(q) {
 }
 
 /**
- * 도구 실행: Openverse 음원 검색.
- * Openverse는 검색어의 모든 낱말이 맞아야 하는 편이라, 전체 검색어 → 두 낱말 → 한 낱말 순으로 넓혀 가며(최대 3회 요청)
- * 후보를 모으고, 요청 낱말이 장르·태그·제목에 많이 들어간 곡부터 정렬합니다.
+ * 도구 실행: Openverse 음원 검색. queries: 1~2낱말짜리 짧은 검색어 최대 3개
+ * (Openverse는 검색어의 모든 낱말이 맞아야 해서 긴 검색어는 결과가 거의 없음 → 짧은 검색어 여러 개를 합침)
+ * 결과가 적으면 마지막 검색어의 낱말 하나씩으로 넓히고, 요청 낱말이 장르·태그·제목에 많이 든 곡부터 정렬.
  */
-export async function searchMusic(query, exclude) {
-  const words = [...new Set(String(query).toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).filter((w) => w.length > 1))].slice(0, 5);
-  const plans = [words.join(' ')];
-  for (let i = 0; i + 1 < words.length; i++) plans.push(`${words[i]} ${words[i + 1]}`);
-  words.forEach((w) => plans.push(w));
+export async function searchMusic(queries, exclude) {
+  const list = (Array.isArray(queries) ? queries : [queries]).map((q) => String(q || '').toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const words = [...new Set(list.join(' ').split(' ').filter((w) => w.length > 1))];
+  const plans = [...new Set([...list.slice(0, 3), ...(list.at(-1) || '').split(' ').filter((w) => w.length > 2)])];
   const seenKey = new Set(), out = new Map();
   let calls = 0;
-  for (const q of [...new Set(plans)].filter(Boolean)) {
-    if (calls >= 3 || out.size >= 12) break;
+  for (const q of plans) {
+    if (calls >= 4 || (calls >= Math.min(3, list.length) && out.size >= 8)) break;
     calls++;
     for (const r of await openverseQuery(q)) {
       const c = toCandidate(r);
@@ -72,7 +73,7 @@ export async function searchMusic(query, exclude) {
       out.set(c.id, { ...c, _score: words.filter((w) => hay.includes(w)).length });
     }
   }
-  return [...out.values()].sort((a, b) => b._score - a._score).slice(0, 12).map(({ _score, ...c }) => c);
+  return [...out.values()].sort((a, b) => b._score - a._score).slice(0, 15).map(({ _score, ...c }) => c);
 }
 
 /** 오디오 주소를 실제로 요청해 재생 가능한지 확인 (앞부분 2KB 범위 요청) */
@@ -92,14 +93,15 @@ export const SEARCH_TOOL = {
   function: {
     name: 'search_music',
     description: '공개 라이선스 음악 목록(Openverse)에서 곡을 검색한다. 결과에는 곡 id, 제목, 아티스트, 길이, 장르, 태그(악기·분위기·빠르기)가 있다.',
-    parameters: { type: 'object', properties: { query: { type: 'string', description: '영어 검색어 2~5단어 (예: "rain night calm acoustic guitar")' } }, required: ['query'] },
+    parameters: { type: 'object', properties: { queries: { type: 'array', items: { type: 'string' }, maxItems: 3, description: '영어로 된 1~2낱말짜리 짧은 검색어 2~3개 (예: ["rain guitar", "acoustic guitar", "calm guitar"])' } }, required: ['queries'] },
   },
 };
 
 export const PROMPT = `너는 '하루 한 장' 옥상 라디오의 음악 추천 도우미야. 사용자가 원하는 분위기를 듣고, 라디오에 아직 없는 공개 라이선스 곡을 최대 ${MAX_PICKS}곡 골라.
-- 먼저 요청을 영어 검색어(장르·악기·분위기 2~5단어)로 바꿔 search_music 도구를 호출해.
-- 결과가 없거나 어울리는 곡이 부족하면, 요청의 핵심은 지키면서 검색어를 바꿔 한 번만 더 검색해. 검색은 최대 ${MAX_SEARCHES}번.
-- 검색 결과의 장르·태그(악기·분위기·빠르기)를 보고 요청에 어울리는 서로 다른 곡을 골라. 같은 아티스트의 비슷한 곡을 여러 개 고르지 마.
+- 먼저 요청을 영어로 된 짧은 검색어 2~3개(각 1~2낱말, 악기·장르·분위기 중심)로 바꿔 search_music 도구를 호출해. 이 검색은 검색어의 모든 낱말이 맞아야 하니 길게 쓰지 마.
+- 결과가 없거나 어울리는 곡이 부족하면, 요청의 핵심(예: 기타, 잔잔함)은 지키면서 다른 짧은 검색어로 한 번만 더 검색해. 검색은 최대 ${MAX_SEARCHES}번.
+- 검색 결과의 장르·태그(악기·분위기·빠르기)를 보고 요청에 가장 가까운 서로 다른 곡을 골라. 완벽히 맞지 않아도 핵심(악기나 분위기)이 맞으면 골라도 돼. 같은 아티스트의 비슷한 곡을 여러 개 고르지 마.
+- 태그에 vocal, male, female이 있으면 노래가 있는 곡이야. 요청이 연주곡이면 instrumental 태그가 있는 곡을 우선해.
 - 반드시 검색 결과에 있는 id만 써. 곡명이나 주소를 지어내지 마. 어울리는 곡이 3개보다 적으면 찾은 만큼만 골라.
 - 너는 곡을 들을 수 없어. 추천 이유는 검색 결과에 적힌 장르·태그만 근거로 한국어 한 줄로 써.
 - 마지막 답은 JSON 하나만: {"picks":[{"id":"ov:...","reason":"한 줄"}]} (없으면 {"picks":[]})`;
@@ -150,12 +152,13 @@ export async function discover(text, exclude) {
         else {
           searches++;
           try {
-            const found = await searchMusic(args.query || text, exclude);
+            const queries = Array.isArray(args.queries) ? args.queries : [args.query || text];
+            const found = await searchMusic(queries, exclude);
             found.forEach((c) => pool.set(c.id, c));
-            trace.push({ kind: 'search', round: searches, query: args.query, found: found.length });
+            trace.push({ kind: 'search', round: searches, query: queries.join(' / '), found: found.length });
             result = { count: found.length, results: found.map(brief) };
           } catch (e) {
-            trace.push({ kind: 'search_error', round: searches, query: args.query, note: e.message });
+            trace.push({ kind: 'search_error', round: searches, query: (args.queries || [args.query]).join(' / '), note: e.message });
             if (!pool.size) return { status: 'search_error', picks: [], trace };
             result = { error: e.message };
           }

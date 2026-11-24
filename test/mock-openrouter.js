@@ -29,11 +29,11 @@ export function decide(userContent) {
 export function discoverTurn(messages) {
   const text = messages.find((m) => m.role === 'user').content;
   const toolMsgs = messages.filter((m) => m.role === 'tool');
-  const call = (query, n) => ({ role: 'assistant', content: '', tool_calls: [{ id: `call_${n}`, type: 'function', function: { name: 'search_music', arguments: JSON.stringify({ query }) } }] });
-  if (!toolMsgs.length) return call(/없는|zzz/.test(text) ? 'zzz nothing' : 'rain night calm guitar', 1);
+  const call = (query, n) => ({ role: 'assistant', content: '', tool_calls: [{ id: `call_${n}`, type: 'function', function: { name: 'search_music', arguments: JSON.stringify({ queries: query.split(' / ') }) } }] });
+  if (!toolMsgs.length) return call(/없는|zzz/.test(text) ? 'zzz / nothing' : 'rain guitar / calm guitar', 1);
   const last = JSON.parse(toolMsgs[toolMsgs.length - 1].content);
   const results = last.results || [];
-  if (!results.length && toolMsgs.length < 2) return call(/없는|zzz/.test(text) ? 'nothing still' : 'soft guitar', 2);
+  if (!results.length && toolMsgs.length < 2) return call(/없는|zzz/.test(text) ? 'nothing / still' : 'soft guitar', 2);
   // 'ov:made-up' 처럼 후보에 없는 id를 하나 섞어 서버가 걸러내는지 확인
   const picks = [{ id: 'ov:made-up', reason: '지어낸 곡' }, ...results.slice(0, 4).map((r) => ({ id: r.id, reason: `${(r.tags || []).slice(0, 2).join('·')} 태그라 요청에 어울려요.` }))];
   return { role: 'assistant', content: JSON.stringify({ picks }) };
