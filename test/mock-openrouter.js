@@ -34,6 +34,8 @@ export function discoverTurn(messages) {
   const last = JSON.parse(toolMsgs[toolMsgs.length - 1].content);
   const results = last.results || [];
   if (!results.length && toolMsgs.length < 2) return call(/없는|zzz/.test(text) ? 'nothing / still' : 'soft guitar', 2);
+  // 요청에 '설명만'이 있으면 첫 최종 답을 형식 없는 설명으로 → 서버가 형식을 짚어 다시 물으면 JSON으로 답함
+  if (/설명만/.test(text) && !messages.some((m) => m.role === 'user' && /JSON 하나만/.test(m.content))) return { role: 'assistant', content: '비 오는 밤에는 기타 곡이 좋아요. 몇 곡을 골라 볼게요.' };
   // 'ov:made-up' 처럼 후보에 없는 id를 하나 섞어 서버가 걸러내는지 확인
   const picks = [{ id: 'ov:made-up', reason: '지어낸 곡' }, ...results.slice(0, 4).map((r) => ({ id: r.id, reason: `${(r.tags || []).slice(0, 2).join('·')} 태그라 요청에 어울려요.` }))];
   return { role: 'assistant', content: JSON.stringify({ picks }) };

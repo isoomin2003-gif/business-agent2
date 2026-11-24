@@ -45,6 +45,12 @@ test('AI 답 읽기: 설명·코드 블록이 붙거나 끊긴 답에서도 완�
   assert.deepEqual(parsePicks('잘 모르겠어요'), []);
 });
 
+test('AI가 형식 없이 설명만 하면 한 번 더 물어 곡을 받음', async () => {
+  const r = await discover('설명만 하는 비 오는 밤 기타', new Set());
+  assert.equal(r.status, 'ok');
+  assert.ok(r.picks.length >= 1);
+});
+
 test('찾지 못하면 none, 검색 실패·키 없음은 상태로 알림', async () => {
   assert.equal((await discover('없는 장르 zzz', new Set())).status, 'none');
   config.openrouter.apiKey = '';

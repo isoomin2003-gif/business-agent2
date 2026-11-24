@@ -147,9 +147,9 @@ const brief = (c) => ({ id: c.id, title: c.title, artist: c.artist, seconds: Mat
 export async function discover(text, exclude) {
   const trace = [];
   const pool = new Map(); // 실제 검색 결과로 받은 후보만
-  let searches = 0;
+  let searches = 0, askedAgain = false;
   const messages = [{ role: 'system', content: PROMPT }, { role: 'user', content: String(text).slice(0, 200) }];
-  for (let turn = 0; turn < 5; turn++) {
+  for (let turn = 0; turn < 6; turn++) {
     const r = await chat(messages);
     if (!r.ok) { trace.push({ kind: 'error', status: r.status }); return { status: r.status, picks: [], trace }; }
     const msg = r.message;
@@ -192,6 +192,13 @@ export async function discover(text, exclude) {
       if (chosen.length >= MAX_PICKS) break;
     }
     trace.push({ kind: 'pick', ids: chosen.map((c) => c.id), dropped: picks.length - chosen.length });
+    // 후보가 있는데 읽을 수 있는 선택이 없으면(설명만 쓰거나 형식이 틀린 답) 형식을 짚어 주고 한 번만 다시 받음
+    if (!chosen.length && pool.size && !askedAgain) {
+      askedAgain = true;
+      messages.push({ role: 'assistant', content: String(msg.content || '') });
+      messages.push({ role: 'user', content: `검색 결과 후보 중에서 골라 다른 설명 없이 JSON 하나만 답해줘. id는 검색 결과의 "ov:..." 값을 그대로 써: {"picks":[{"id":"ov:...","reason":"한 줄"}]}` });
+      continue;
+    }
     return { status: chosen.length ? 'ok' : 'none', picks: chosen, trace };
   }
   return { status: 'none', picks: [], trace };
