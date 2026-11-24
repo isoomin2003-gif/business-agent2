@@ -47,20 +47,9 @@ export async function openDiary({ onViewInShelf } = {}) {
   };
   const updateCount = () => { count.textContent = `${[...text.value].length}/${MAX}`; };
 
-  // 오늘 이미 쓴 페이지가 있으면 불러와 수정할 수 있게
-  try {
-    const { entry } = await api(`/api/diary/day/${today}`);
-    if (entry) {
-      draft.saved = entry;
-      if (!draft.videoId) { draft.videoId = entry.videoId; draft.videoUrl = entry.videoUrl; }
-      if (!draft.sentence) draft.sentence = entry.sentence;
-      $('#d-view').hidden = false;
-      setStatus('오늘 이미 남긴 페이지예요. 영상이나 문장을 바꿔 다시 저장할 수 있어요.');
-      $('#d-save').textContent = '수정 저장하기';
-    }
-  } catch (e) { setStatus(e.message, 'err'); }
   text.value = draft.sentence; updateCount();
   if (draft.videoUrl) showVideo(draft.videoUrl);
+  // 오늘 이미 쓴 페이지는 아래(버튼 연결 뒤)에서 불러옵니다. 느린 연결에서도 버튼이 바로 동작하도록.
 
   text.addEventListener('input', () => { draft.sentence = text.value; store.set(`draft:${today}`, text.value); updateCount(); });
 
@@ -125,5 +114,18 @@ export async function openDiary({ onViewInShelf } = {}) {
   });
   $('#d-confirm').addEventListener('click', () => { $('#d-first').hidden = true; store.set('guestNoticeSeen', true); save(); });
   $('#d-view').addEventListener('click', () => { const e = draft.saved; m.close(); onViewInShelf?.(e.date.slice(0, 7), e.id); });
+
+  // 오늘 이미 쓴 페이지가 있으면 불러와 수정할 수 있게 (그 사이 사용자가 고른 영상·문장은 덮어쓰지 않음)
+  try {
+    const { entry } = await api(`/api/diary/day/${today}`);
+    if (entry) {
+      if (!draft.saved || draft.saved.updatedAt <= entry.updatedAt) draft.saved = entry;
+      if (!draft.videoId) { draft.videoId = entry.videoId; draft.videoUrl = entry.videoUrl; showVideo(entry.videoUrl); }
+      if (!text.value.trim()) { text.value = entry.sentence; draft.sentence = entry.sentence; updateCount(); }
+      $('#d-view').hidden = false;
+      if (!status.textContent) setStatus('오늘 이미 남긴 페이지예요. 영상이나 문장을 바꿔 다시 저장할 수 있어요.');
+      $('#d-save').textContent = '수정 저장하기';
+    }
+  } catch (e) { if (!status.textContent) setStatus(e.message, 'err'); }
   return m;
 }

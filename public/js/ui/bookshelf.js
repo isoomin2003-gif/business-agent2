@@ -43,8 +43,8 @@ export async function openBookshelf({ onOpenMonth, onOpenExample, startMode = 'm
   if (store.get('aiNoticeSeen')) $('#m-notice-ok').hidden = true;
   $('#m-notice-ok').addEventListener('click', () => { store.set('aiNoticeSeen', true); $('#m-notice-ok').hidden = true; });
 
-  // 월별 책
-  try {
+  // 월별 책 (느린 연결에서도 아래 버튼이 바로 동작하도록 기다리지 않고 불러옴)
+  (async () => { try {
     const { months } = await api('/api/diary/months');
     const shelf = $('#s-shelf');
     if (!months.length) {
@@ -57,7 +57,7 @@ export async function openBookshelf({ onOpenMonth, onOpenExample, startMode = 'm
       }).join('');
       shelf.querySelectorAll('.book-spine').forEach((b) => b.addEventListener('click', () => { m.close(); onOpenMonth(b.dataset.month); }));
     }
-  } catch (e) { $('#s-shelf').innerHTML = `<span class="empty-shelf">${esc(e.message)}</span>`; }
+  } catch (e) { $('#s-shelf').innerHTML = `<span class="empty-shelf">${esc(e.message)}</span>`; } })();
 
   const chips = {
     mine: [['', '이번 달에 친구랑 웃었던 날이 언제였지?'], ['', '지난달에 어떤 날들이 있었지?']],
