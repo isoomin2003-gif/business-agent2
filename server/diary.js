@@ -133,6 +133,16 @@ diaryRouter.put('/diary/day/:date', express.json(), wrap(async (req, res) => {
   res.json({ entry: entryJson(r), created: !prev });
 }));
 
+// 내 일기 페이지 삭제: 문장과 (다른 페이지에서 쓰지 않는) 영상 파일까지 지웁니다. 다른 사람의 페이지는 404.
+diaryRouter.delete('/diary/entry/:id', wrap(async (req, res) => {
+  const db = getDb();
+  const e = await db.get('SELECT id, video_id FROM diary_entries WHERE id = ? AND user_id = ?', [String(req.params.id), req.user.id]);
+  if (!e) return res.status(404).json({ error: 'not_found', message: '지울 수 있는 페이지가 없어요.' });
+  await db.run('DELETE FROM diary_entries WHERE id = ? AND user_id = ?', [e.id, req.user.id]);
+  await deleteVideoIfUnused(e.video_id, req.user.id);
+  res.json({ ok: true });
+}));
+
 diaryRouter.get('/diary/months', wrap(async (req, res) => {
   const rows = await getDb().all(`SELECT substr(entry_date, 1, 7) AS month, COUNT(*) AS count FROM diary_entries
     WHERE user_id = ? GROUP BY substr(entry_date, 1, 7) ORDER BY month`, [req.user.id]);

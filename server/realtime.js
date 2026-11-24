@@ -85,6 +85,17 @@ export function floatWish(userId, placeId, wishId) {
   }
 }
 
+/** 지운 소원의 머리 위 ✦ 표시를 모든 화면에서 내립니다 */
+export function unfloatWish(wishId) {
+  for (const [placeId, pl] of Object.entries(places)) {
+    for (const p of pl.players.values()) {
+      if (p.wish?.wishId !== wishId) continue;
+      p.wish = null;
+      io.to(placeId).emit('wish:float', { sid: p.sid, wishId, until: 0 });
+    }
+  }
+}
+
 export function notifyUser(userId, event, data) {
   for (const [, s] of io.of('/').sockets) if (s.data.user?.id === userId) s.emit(event, data);
 }

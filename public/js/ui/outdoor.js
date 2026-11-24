@@ -91,16 +91,32 @@ function wishCard(w) {
   return `<div class="wish" data-wish="${w.id}">
     <div class="meta">${esc(w.nickname)}${w.isMine ? ' (나)' : ''} · ${when} · ${w.source === 'star' ? '🌠 별똥별 소원' : '🌳 소원 나무'}${w.isPublic ? '' : ' · 🔒 비공개(나만 보기)'}</div>
     <div class="text">${esc(w.text)}</div>
-    <div class="row" style="margin-top:6px">${react('empathy', '🤝 공감', w.empathy, w.myEmpathy)}${react('cheer', '📣 응원', w.cheer, w.myCheer)}</div>
+    <div class="row" style="margin-top:6px">${react('empathy', '🤝 공감', w.empathy, w.myEmpathy)}${react('cheer', '📣 응원', w.cheer, w.myCheer)}
+      ${w.isMine ? `<button class="react" data-del="${w.id}" style="margin-left:auto">🗑 삭제</button>` : ''}</div>
   </div>`;
 }
 
-function bindReactions(root, refresh) {
+function bindReactions(root, refresh, onRemoved) {
   root.querySelectorAll('[data-react]').forEach((b) => b.addEventListener('click', async () => {
     try {
       const { wish } = await api(`/api/wishes/${b.dataset.id}/react`, { method: 'POST', body: { kind: b.dataset.react } });
       refresh(wish);
     } catch (e) { toast(e.message); }
+  }));
+  // 내 소원 삭제: 한 번 누르면 확인 문구로 바뀌고, 한 번 더 누르면 삭제
+  root.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+    if (!b.dataset.armed) {
+      b.dataset.armed = '1'; b.classList.add('on'); b.textContent = '정말 지울까요? 한 번 더 누르기';
+      setTimeout(() => { if (b.isConnected && b.dataset.armed) { delete b.dataset.armed; b.classList.remove('on'); b.textContent = '🗑 삭제'; } }, 4000);
+      return;
+    }
+    b.disabled = true;
+    try {
+      await api(`/api/wishes/${b.dataset.del}`, { method: 'DELETE' });
+      b.closest('.wish')?.remove();
+      toast('소원을 지웠어요.');
+      onRemoved?.(b.dataset.del);
+    } catch (e) { toast(e.message); b.disabled = false; }
   }));
 }
 
@@ -116,17 +132,22 @@ export async function openTree({ onPosted } = {}) {
       <h3 style="margin:16px 0 8px">나무에 걸린 소원</h3><div class="wish-list" id="t-list">불러오는 중…</div>`,
   });
   const list = m.$('#t-list');
+  const removed = () => {
+    const n = list.querySelectorAll('.wish').length;
+    if (!n) list.innerHTML = '<p class="muted">아직 걸린 소원이 없어요. 첫 소원을 걸어 보세요.</p>';
+    onPosted?.(n);
+  };
   const rebind = (w) => {
     const el = list.querySelector(`[data-wish="${w.id}"]`);
     if (!el) return;
     const tmp = document.createElement('div'); tmp.innerHTML = wishCard(w);
-    const fresh = tmp.firstElementChild; el.replaceWith(fresh); bindReactions(fresh, rebind);
+    const fresh = tmp.firstElementChild; el.replaceWith(fresh); bindReactions(fresh, rebind, removed);
   };
   async function loadSafe() {
     try {
       const { wishes } = await api('/api/wishes/tree');
       list.innerHTML = wishes.length ? wishes.map(wishCard).join('') : '<p class="muted">아직 걸린 소원이 없어요. 첫 소원을 걸어 보세요.</p>';
-      bindReactions(list, rebind);
+      bindReactions(list, rebind, removed);
       onPosted?.(wishes.length);
     } catch (e) { list.textContent = e.message; }
   }
@@ -176,7 +197,7 @@ export function openStarWish({ starId, place, onDone }) {
 export async function openWish(wishId) {
   const m = openModal({ title: '✦ 별똥별 소원', paper: true, html: '<div id="w-one">불러오는 중…</div>' });
   const box = m.$('#w-one');
-  const draw = (w) => { box.innerHTML = wishCard(w); bindReactions(box, draw); };
+  const draw = (w) => { box.innerHTML = wishCard(w); bindReactions(box, draw, () => m.close()); };
   try { draw((await api(`/api/wishes/${wishId}`)).wish); } catch (e) { box.textContent = e.message; }
   return m;
 }
@@ -185,7 +206,10 @@ export async function openMyWishes() {
   const m = openModal({ title: '내 소원', paper: true, html: '<div class="wish-list" id="mw">불러오는 중…</div>' });
   try {
     const { wishes } = await api('/api/wishes/mine');
-    m.$('#mw').innerHTML = wishes.length ? wishes.map(wishCard).join('') : '<p class="muted">아직 빈 소원이 없어요. 별똥별이 지나가거나 공원의 소원 나무에서 빌 수 있어요.</p>';
+    const empty = '<p class="muted">아직 빈 소원이 없어요. 별똥별이 지나가거나 공원의 소원 나무에서 빌 수 있어요.</p>';
+    const box = m.$('#mw');
+    box.innerHTML = wishes.length ? wishes.map(wishCard).join('') : empty;
+    bindReactions(box, () => {}, () => { if (!box.querySelector('.wish')) box.innerHTML = empty; });
   } catch (e) { m.$('#mw').textContent = e.message; }
   return m;
 }

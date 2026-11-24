@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { getDb, nowIso } from './db.js';
 import { requireUser, wrap } from './auth.js';
-import { isUserIn, getStar, floatWish, notifyUser } from './realtime.js';
+import { isUserIn, getStar, floatWish, unfloatWish, notifyUser } from './realtime.js';
 
 export const WISH_MAX = 80;
 export const wishRouter = express.Router();
@@ -72,6 +72,17 @@ wishRouter.get('/wishes/:id', wrap(async (req, res) => {
   const w = await getDb().get('SELECT * FROM wishes WHERE id = ?', [String(req.params.id)]);
   if (!w || (!Number(w.is_public) && w.user_id !== req.user.id)) return res.status(404).json({ message: '볼 수 없는 소원이에요.' });
   res.json({ wish: await wishJson(w, req.user.id) });
+}));
+
+// 내 소원 삭제 (소원 나무·별똥별 소원 모두). 다른 사람의 소원은 404. 받은 공감/응원도 함께 지움
+wishRouter.delete('/wishes/:id', wrap(async (req, res) => {
+  const db = getDb();
+  const w = await db.get('SELECT id FROM wishes WHERE id = ? AND user_id = ?', [String(req.params.id), req.user.id]);
+  if (!w) return res.status(404).json({ message: '지울 수 있는 소원이 없어요.' });
+  await db.run('DELETE FROM wish_reactions WHERE wish_id = ?', [w.id]);
+  await db.run('DELETE FROM wishes WHERE id = ? AND user_id = ?', [w.id, req.user.id]);
+  unfloatWish(w.id);
+  res.json({ ok: true });
 }));
 
 // 공감/응원 (토글). 비공개 소원과 자기 소원에는 보낼 수 없음

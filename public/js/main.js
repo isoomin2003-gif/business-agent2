@@ -7,7 +7,7 @@ import { rooftop } from './scenes/rooftop.js';
 import { park } from './scenes/park.js';
 import { drawAvatar } from './render/pixel.js';
 import { toast, closeAllModals } from './ui/modal.js';
-import { openDiary } from './ui/diary.js';
+import { openDiary, forgetEntry } from './ui/diary.js';
 import { openBookshelf } from './ui/bookshelf.js';
 import { openBook } from './ui/book.js';
 import { openPlaces, openRadio, openTree, openStarWish, openWish, openMyWishes } from './ui/outdoor.js';
@@ -103,14 +103,19 @@ async function enterRoom(from = 'door') {
   const n = PLACES.room.nodes[from];
   stage.upsert('me', { nickname: user.nickname, color: user.color, me: true, points: [{ x: n.x, y: n.y }], startAt: net.now(), seat: null });
   setHud();
-  try {
-    const { months } = await api('/api/diary/months');
-    if (place === 'room') stage.renderBackground({ bookCount: months.reduce((s, m) => s + m.count, 0) });
-  } catch { /* */ }
+  refreshRoomBooks();
   if (!store.get('firstHintShown')) {
     store.set('firstHintShown', true);
     firstHint = stage.banner(150, 66, '책상을 눌러 오늘의 한 장을 기록해 보세요', 20000, 'first-hint');
   }
+}
+
+/** 방 책장의 책 그림을 실제 기록 수에 맞춤 */
+async function refreshRoomBooks() {
+  try {
+    const { months } = await api('/api/diary/months');
+    if (place === 'room') stage.renderBackground({ bookCount: months.reduce((s, m) => s + m.count, 0) });
+  } catch { /* */ }
 }
 
 /** 방 안에서 정해진 경로로 걷기. 도착하면 true, 다른 이동으로 취소되면 false */
@@ -133,7 +138,7 @@ async function openMonth(month, entryId) {
     if (!entries.length) return toast('이 달에는 기록이 없어요.');
     const idx = Math.max(0, entries.findIndex((e) => e.id === entryId));
     const [y, m] = month.split('-');
-    openBook({ title: `📖 ${y}년 ${Number(m)}월의 책`, entries, index: entryId ? idx : 0 });
+    openBook({ title: `📖 ${y}년 ${Number(m)}월의 책`, entries, index: entryId ? idx : 0, onDeleted: (e) => { forgetEntry(e.id); refreshRoomBooks(); } });
   } catch (e) { toast(e.message); }
 }
 

@@ -134,3 +134,32 @@ test('기억 찾기: 키가 없으면 no_key 상태로 검색 결과만 돌려�
   assert.equal(none.body.status, 'no_results');
   assert.equal(none.body.sentToAi, null);
 });
+
+test('삭제: 내 일기·소원만 지울 수 있고, 일기를 지우면 영상도 열리지 않는다', async () => {
+  const a = await guest(), b = await guest();
+  const v = await a.call('/api/videos/sample', { method: 'POST', body: JSON.stringify({ sampleId: 'fireworks' }) });
+  const saved = await a.call(`/api/diary/day/${today}`, { method: 'PUT', body: JSON.stringify({ sentence: '지울 문장', videoId: v.body.videoId }) });
+  const id = saved.body.entry.id;
+  // 다른 사람은 지울 수 없음
+  assert.equal((await b.call(`/api/diary/entry/${id}`, { method: 'DELETE' })).status, 404);
+  assert.equal((await a.call(`/api/diary/month/${today.slice(0, 7)}`)).body.entries.length, 1);
+  // 본인은 지울 수 있고, 영상도 사라짐
+  assert.equal((await a.call(`/api/diary/entry/${id}`, { method: 'DELETE' })).status, 200);
+  assert.equal((await a.call(`/api/diary/month/${today.slice(0, 7)}`)).body.entries.length, 0);
+  assert.equal((await fetch(BASE + v.body.url, { headers: { cookie: a.cookie }, redirect: 'manual' })).status, 404);
+  assert.deepEqual((await a.call('/api/diary/months')).body.months, []);
+  // 같은 날 다시 쓸 수 있음
+  const v2 = await a.call('/api/videos/sample', { method: 'POST', body: JSON.stringify({ sampleId: 'rain' }) });
+  assert.equal((await a.call(`/api/diary/day/${today}`, { method: 'PUT', body: JSON.stringify({ sentence: '다시 쓴 문장', videoId: v2.body.videoId }) })).body.created, true);
+
+  // 소원: 공원에서 나무에 건 뒤, 다른 사람의 응원이 있어도 작성자는 지울 수 있음
+  const sa = await sock(a.cookie);
+  await emit(sa, 'join', { place: 'park' });
+  const w = (await a.call('/api/wishes/tree', { method: 'POST', body: JSON.stringify({ text: '지울 소원' }) })).body.wish;
+  await b.call(`/api/wishes/${w.id}/react`, { method: 'POST', body: JSON.stringify({ kind: 'cheer' }) });
+  assert.equal((await b.call(`/api/wishes/${w.id}`, { method: 'DELETE' })).status, 404);
+  assert.equal((await a.call(`/api/wishes/${w.id}`, { method: 'DELETE' })).status, 200);
+  assert.ok(!(await b.call('/api/wishes/tree')).body.wishes.some((x) => x.id === w.id));
+  assert.equal((await b.call(`/api/wishes/${w.id}`)).status, 404);
+  sa.close();
+});

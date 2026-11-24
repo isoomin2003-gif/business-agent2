@@ -6,6 +6,14 @@ const MAX = 100;
 // 모달을 닫았다 열어도 작성 중인 내용이 유지되도록 모듈 범위에 보관
 const draft = { date: null, sentence: '', videoId: null, videoUrl: null, saved: null };
 
+/** 책에서 오늘 페이지를 지웠을 때, 다이어리 창이 지워진 페이지를 '수정'하려 하지 않도록 초기화 */
+export function forgetEntry(entryId) {
+  if (draft.saved?.id !== entryId) return;
+  if (draft.videoId === draft.saved.videoId) { draft.videoId = null; draft.videoUrl = null; }
+  if (draft.sentence === draft.saved.sentence) draft.sentence = '';
+  draft.saved = null;
+}
+
 export async function openDiary({ onViewInShelf } = {}) {
   const today = localToday();
   if (draft.date !== today) Object.assign(draft, { date: today, sentence: store.get(`draft:${today}`, ''), videoId: null, videoUrl: null, saved: null });
