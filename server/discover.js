@@ -41,7 +41,7 @@ function toCandidate(r) {
   // Freesound는 효과음·현장 녹음이 많아 음악임을 알 수 있는 태그·제목이 있는 것만
   if ((r.source || r.provider) === 'freesound' && !MUSIC_WORDS.test(words)) return null;
   return {
-    id: `ov:${r.id}`, source: r.source || r.provider, title: decode(r.title), artist: decode(r.creator) || '(작자 미상)',
+    id: `ov:${r.id}`, source: r.source || r.provider, title: decode(r.title).replace(/\.(wav|flac|mp3|ogg|aiff?)$/i, '').trim() || decode(r.title), artist: decode(r.creator) || '(작자 미상)',
     audioUrl: r.url, sourceUrl: r.foreign_landing_url || '', license: r.license, licenseVersion: r.license_version || '',
     licenseUrl: r.license_url || '', attribution: decode(r.attribution), durationMs: r.duration,
     genres: (r.genres || []).slice(0, 4), tags: (r.tags || []).map((t) => t.name).filter(Boolean).slice(0, 10),
