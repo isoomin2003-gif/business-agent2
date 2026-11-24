@@ -30,7 +30,7 @@ export function startMockOpenverse(port = 0) {
     }
     if (u.pathname === '/v1/audio/') {
       const q = (u.searchParams.get('q') || '').toLowerCase();
-      const results = /nothing|zzz/.test(q) ? [] : items();
+      const results = /nothing|zzz|still/.test(q) ? [] : items();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ result_count: results.length, results }));
     }

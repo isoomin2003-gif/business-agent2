@@ -34,20 +34,45 @@ function toCandidate(r) {
 }
 
 /** 도구 실행: Openverse 음원 검색 */
-export async function searchMusic(query, exclude) {
-  const url = `${OPENVERSE}/audio/?${new URLSearchParams({ q: String(query).slice(0, 80), category: 'music', license: LICENSES.join(','), page_size: '20', mature: 'false' })}`;
+const cache = new Map(); // 검색어 → { at, results } (10분) — 익명 이용 한도(분당 20회)를 아끼기 위해
+async function openverseQuery(q) {
+  const hit = cache.get(q);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.results;
+  const url = `${OPENVERSE}/audio/?${new URLSearchParams({ q: q.slice(0, 80), category: 'music', license: LICENSES.join(','), page_size: '20', mature: 'false' })}`;
   const res = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': 'HaruHanjang/1.0 (class project radio)', ...(OPENVERSE_TOKEN ? { Authorization: `Bearer ${OPENVERSE_TOKEN}` } : {}) } });
   if (res.status === 429) throw Object.assign(new Error('음악 검색 요청이 너무 많아요.'), { code: 'rate' });
   if (!res.ok) throw Object.assign(new Error(`음악 검색 실패 (HTTP ${res.status})`), { code: 'search' });
-  const data = await res.json();
-  const seen = new Set();
-  return (data.results || []).map(toCandidate).filter((c) => {
-    if (!c || exclude.has(c.id)) return false;
-    const k = `${norm(c.title)}|${norm(c.artist)}`;
-    if (seen.has(k)) return false; // 같은 곡의 중복 항목
-    seen.add(k);
-    return true;
-  }).slice(0, 12);
+  const results = (await res.json()).results || [];
+  cache.set(q, { at: Date.now(), results });
+  return results;
+}
+
+/**
+ * 도구 실행: Openverse 음원 검색.
+ * Openverse는 검색어의 모든 낱말이 맞아야 하는 편이라, 전체 검색어 → 두 낱말 → 한 낱말 순으로 넓혀 가며(최대 3회 요청)
+ * 후보를 모으고, 요청 낱말이 장르·태그·제목에 많이 들어간 곡부터 정렬합니다.
+ */
+export async function searchMusic(query, exclude) {
+  const words = [...new Set(String(query).toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).filter((w) => w.length > 1))].slice(0, 5);
+  const plans = [words.join(' ')];
+  for (let i = 0; i + 1 < words.length; i++) plans.push(`${words[i]} ${words[i + 1]}`);
+  words.forEach((w) => plans.push(w));
+  const seenKey = new Set(), out = new Map();
+  let calls = 0;
+  for (const q of [...new Set(plans)].filter(Boolean)) {
+    if (calls >= 3 || out.size >= 12) break;
+    calls++;
+    for (const r of await openverseQuery(q)) {
+      const c = toCandidate(r);
+      if (!c || exclude.has(c.id) || out.has(c.id)) continue;
+      const k = `${norm(c.title)}|${norm(c.artist)}`;
+      if (seenKey.has(k)) continue; // 같은 곡의 중복 항목
+      seenKey.add(k);
+      const hay = `${c.title} ${c.genres.join(' ')} ${c.tags.join(' ')}`.toLowerCase();
+      out.set(c.id, { ...c, _score: words.filter((w) => hay.includes(w)).length });
+    }
+  }
+  return [...out.values()].sort((a, b) => b._score - a._score).slice(0, 12).map(({ _score, ...c }) => c);
 }
 
 /** 오디오 주소를 실제로 요청해 재생 가능한지 확인 (앞부분 2KB 범위 요청) */
