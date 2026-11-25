@@ -8,7 +8,7 @@ export const PLACES = {
   room: {
     name: '내 방',
     spawn: { x: 292, y: 142 },
-    targets: { door: { x: 292, y: 142 }, shelf: { x: 238, y: 142 }, center: { x: 215, y: 152 }, cd: { x: 130, y: 144 } }, // cd: 책상 위 벽 CD 플레이어 앞
+    targets: { door: { x: 292, y: 142 }, shelf: { x: 238, y: 142 }, center: { x: 215, y: 152 }, cd: { x: 114, y: 138 } }, // cd: 창문 오른쪽 벽 CD 플레이어 앞
     walk: {
       band: { x0: 6, x1: 314, y0: 118, y1: 176 },
       obstacles: [

@@ -1,8 +1,11 @@
-// 공원 자연음: 외부 음원 없이 Web Audio로 직접 합성 (잔디·산책로 발소리 / 밤 풀벌레 / 약한 바람)
-// 공원에 들어서면 밤 소리가 계속되고(서 있을 때·앉았을 때 모두), 나가면 서서히 멈춤. 배경음악은 없음
+// 공원 자연음: 녹음 파일 없이 Web Audio로 직접 합성 (밤 바람 · 멀리서 가끔 우는 풀벌레 · 잔디/산책로 발소리)
+// - 공원에 들어서면 약한 바람이 계속 흐르고, 풀벌레는 멀리서 '가끔' 짧게 울다 쉼 → 사이사이 바람 소리만 들리는 여백
+// - 풀벌레는 귀에 튀지 않게 낮은 음(2.4~3.3kHz)으로, 부드러운 여닫힘과 고음 깎기(저역 통과)를 거쳐 작게
+// - 발소리는 아바타가 한 발 내딛을 때마다. 바닥마다 비슷한 소리 4가지를 세기를 조금씩 바꿔 번갈아 냄
+// 모든 소리 함수는 (오디오 컨텍스트, 출력, 시각)을 받아, 실제 재생과 오프라인 점검(같은 코드로 미리 렌더링)에 함께 씀
 let ctx = null;
-let night = null;
 let master = null;
+let night = null;
 
 function ensure() {
   if (!ctx) {
@@ -17,99 +20,165 @@ function ensure() {
 // 브라우저 자동재생 정책: 첫 사용자 입력에서 오디오 컨텍스트를 깨웁니다.
 window.addEventListener('pointerdown', () => ensure(), { once: true });
 
-function noiseBuffer(sec = 2) {
-  const b = ctx.createBuffer(1, ctx.sampleRate * sec, ctx.sampleRate);
-  const d = b.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+const noiseCache = new WeakMap();
+function noise(c) {
+  let b = noiseCache.get(c);
+  if (!b) {
+    b = c.createBuffer(1, c.sampleRate * 3, c.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    noiseCache.set(c, b);
+  }
   return b;
 }
+/** 잡음을 필터에 통과시켜 부드러운 여닫힘(attack→decay)으로 한 번 소리 냄 */
+function puff(c, out, t, { attack, decay, peak, filters }) {
+  const src = c.createBufferSource(); src.buffer = noise(c);
+  let node = src;
+  for (const [type, freq, q] of filters) { const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; node.connect(f); node = f; }
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(peak, t + attack); // 선형으로 천천히 올라가 '딱' 하고 튀지 않게
+  g.gain.setTargetAtTime(0.0001, t + attack, decay / 3);
+  node.connect(g).connect(out);
+  src.start(t, Math.random() * 2.5); src.stop(t + attack + decay + 0.05);
+}
 
-const steps = []; // 최근 발소리 기록 (자동 점검용: 시각·바닥)
+// ───────────── 발소리 ─────────────
+// 잔디: 풀잎이 살짝 스치는 '사락' (중고역 잡음, 느린 시작)  /  산책로: 부드러운 흙을 가볍게 밟는 '푹' (낮은 잡음 + 아주 약한 잔모래)
+const STEP_VARIANTS = {
+  grass: [
+    { f: 1700, d: 0.2, a: 0.04, f2: 2400 }, { f: 2000, d: 0.17, a: 0.035, f2: 2700 },
+    { f: 1500, d: 0.22, a: 0.045, f2: 2200 }, { f: 1850, d: 0.19, a: 0.05, f2: 2900 },
+  ],
+  path: [
+    { f: 520, d: 0.13, a: 0.014, g: 1600 }, { f: 640, d: 0.11, a: 0.012, g: 1900 },
+    { f: 460, d: 0.15, a: 0.016, g: 1450 }, { f: 580, d: 0.12, a: 0.013, g: 1750 },
+  ],
+};
+export function stepSound(c, out, t, surface, variant, level = 1) {
+  const v = STEP_VARIANTS[surface][variant % 4];
+  if (surface === 'path') {
+    puff(c, out, t, { attack: v.a, decay: v.d, peak: 0.075 * level, filters: [['lowpass', v.f, 0.7], ['lowpass', v.f * 1.6, 0.5]] });
+    puff(c, out, t + 0.012, { attack: 0.01, decay: 0.07, peak: 0.011 * level, filters: [['bandpass', v.g, 0.8], ['lowpass', 3000, 0.5]] });
+  } else {
+    puff(c, out, t, { attack: v.a, decay: v.d, peak: 0.042 * level, filters: [['bandpass', v.f, 0.6], ['lowpass', 4200, 0.5]] });
+    puff(c, out, t + 0.04, { attack: 0.03, decay: v.d * 0.7, peak: 0.016 * level, filters: [['bandpass', v.f2, 0.7], ['lowpass', 4500, 0.5]] });
+  }
+}
+
+const steps = []; // 최근 발소리 기록 (자동 점검용: 시각·바닥·변형·세기)
 export const stepLog = () => steps.slice(-40);
+let lastVariant = -1;
+/** 한 걸음: 같은 바닥의 비슷한 소리 4가지 중 직전과 다른 것을, 세기를 0.7~1.0 사이로 바꿔 재생 */
+export function footstep(surface = 'grass') {
+  if (!ensure()) return;
+  let variant = Math.floor(Math.random() * 4);
+  if (variant === lastVariant) variant = (variant + 1 + Math.floor(Math.random() * 3)) % 4;
+  lastVariant = variant;
+  const level = 0.7 + Math.random() * 0.3;
+  steps.push({ at: Date.now(), surface, variant, level: +level.toFixed(2) }); if (steps.length > 80) steps.splice(0, 40);
+  stepSound(ctx, master, ctx.currentTime + 0.005, surface, variant, level);
+}
 
-/** 짧은 잡음 한 덩어리를 대역 필터로 걸러 소리 냄 */
-function grain(t, { dur, freq, q = 1, gain, attack = 0.003, type = 'bandpass' }) {
-  const src = ctx.createBufferSource(); src.buffer = noiseBuffer(Math.max(0.05, dur + 0.02));
-  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  src.connect(f).connect(g).connect(master); src.start(t); src.stop(t + dur + 0.02);
+// ───────────── 밤 분위기 ─────────────
+/** 약한 밤바람: 저역 통과 잡음이 천천히 일렁임 (계속 흐름) */
+export function windNodes(c, out, t) {
+  const src = c.createBufferSource(); src.buffer = noise(c); src.loop = true;
+  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380;
+  const g = c.createGain(); g.gain.value = 0.085;
+  const lfo = c.createOscillator(); lfo.frequency.value = 0.11; const lg = c.createGain(); lg.gain.value = 0.05; lfo.connect(lg).connect(g.gain);
+  const lfo2 = c.createOscillator(); lfo2.frequency.value = 0.063; const lg2 = c.createGain(); lg2.gain.value = 150; lfo2.connect(lg2).connect(lp.frequency);
+  src.connect(lp).connect(g).connect(out);
+  [src, lfo, lfo2].forEach((n) => n.start(t));
+  return [src, lfo, lfo2];
+}
+
+/** 멀리서 들리는 풀벌레 한 소절: 낮은 음, 부드럽게 여닫히는 짧은 울음 몇 번, 고음 깎기 + 옅은 메아리 */
+export function cricketPhrase(c, out, t, rnd = Math.random) {
+  const freq = 2400 + rnd() * 900;
+  const pulses = 3 + Math.floor(rnd() * 4), gap = 0.07 + rnd() * 0.035;
+  const peak = 0.012 + rnd() * 0.009; // 예전(쉬지 않고 울던 4~4.7kHz)보다 최고 세기 약 10dB 낮게
+  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600; lp.Q.value = 0.5;
+  const pan = c.createStereoPanner ? c.createStereoPanner() : null;
+  const echo = c.createDelay(0.5); echo.delayTime.value = 0.13; const eg = c.createGain(); eg.gain.value = 0.25;
+  const dest = pan || out;
+  if (pan) { pan.pan.value = rnd() * 1.4 - 0.7; pan.connect(out); }
+  lp.connect(dest); lp.connect(echo).connect(eg).connect(dest);
+  const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+  const g = c.createGain(); g.gain.setValueAtTime(0, t);
+  for (let i = 0; i < pulses; i++) {
+    const s = t + i * gap;
+    g.gain.setValueAtTime(0, s);
+    g.gain.linearRampToValueAtTime(peak * (0.8 + rnd() * 0.4), s + 0.014);
+    g.gain.linearRampToValueAtTime(0, s + 0.045);
+  }
+  o.connect(g).connect(lp);
+  o.start(t); o.stop(t + pulses * gap + 0.1);
+  return t + pulses * gap;
 }
 
 /**
- * 한 걸음 발소리.
- * - grass: 풀잎이 눌리며 사락 — 높은 대역의 부드러운 잡음 + 아주 약한 낮은 울림
- * - path : 흙·잔자갈 — 낮은 '툭' + 짧은 자갈 알갱이 소리 여러 개를 잘게 흩뿌림
+ * from~to 사이에 풀벌레 소절을 띄엄띄엄 배치. 한 번 울면 짧게 한두 번 더 이어 울기도 하고,
+ * 소절 사이는 2.5~7초, 가끔은 7~11초 동안 바람 소리만. 다음에 울 시각을 돌려줌
  */
-export function footstep(surface = 'grass') {
-  if (!ensure()) return;
-  const t = ctx.currentTime + 0.005;
-  steps.push({ at: Date.now(), surface }); if (steps.length > 80) steps.splice(0, 40);
-  const v = 0.85 + Math.random() * 0.3; // 걸음마다 조금씩 다르게
-  if (surface === 'path') {
-    grain(t, { dur: 0.07, freq: 180, q: 0.8, gain: 0.16 * v, attack: 0.004, type: 'lowpass' });
-    const n = 5 + Math.floor(Math.random() * 5);
-    for (let i = 0; i < n; i++) grain(t + 0.004 + Math.random() * 0.09, { dur: 0.012 + Math.random() * 0.018, freq: 1800 + Math.random() * 2600, q: 2.5, gain: (0.05 + Math.random() * 0.06) * v, attack: 0.001 });
-  } else {
-    grain(t, { dur: 0.06, freq: 140, q: 0.7, gain: 0.05 * v, attack: 0.01, type: 'lowpass' });
-    grain(t + 0.01, { dur: 0.2, freq: 2600 + Math.random() * 900, q: 0.6, gain: 0.07 * v, attack: 0.03 });
-    grain(t + 0.05, { dur: 0.14, freq: 5200, q: 0.9, gain: 0.025 * v, attack: 0.02 });
+export function scheduleCrickets(c, out, from, to, rnd = Math.random) {
+  let t = from;
+  while (t < to) {
+    let end = cricketPhrase(c, out, t, rnd);
+    if (rnd() < 0.45) end = cricketPhrase(c, out, end + 0.35 + rnd() * 0.4, rnd); // 이어서 한 번 더
+    t = end + (rnd() < 0.25 ? 7 + rnd() * 4 : 2.5 + rnd() * 4.5);
   }
+  return t;
 }
 
 export function startNight() {
   if (night || !ensure()) return;
   const t = ctx.currentTime;
   const out = ctx.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(1, t + 1.5); out.connect(master);
-  // 바람: 저역 통과 노이즈 + 느린 흔들림
-  const wind = ctx.createBufferSource(); wind.buffer = noiseBuffer(4); wind.loop = true;
-  const wf = ctx.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 420;
-  const wg = ctx.createGain(); wg.gain.value = 0.10;
-  const lfo = ctx.createOscillator(); lfo.frequency.value = 0.12; const lg = ctx.createGain(); lg.gain.value = 0.07; lfo.connect(lg).connect(wg.gain);
-  const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.07; const lg2 = ctx.createGain(); lg2.gain.value = 180; lfo2.connect(lg2).connect(wf.frequency);
-  wind.connect(wf).connect(wg).connect(out);
-  // 풀벌레: 고음 사인파를 빠르게 여닫는 맥박(찌르르) + 느린 쉼
-  const cricket = (freq, rate, pan, delay) => {
-    const o = ctx.createOscillator(); o.frequency.value = freq;
-    // 사각파(-1~1)에 같은 크기의 기본값을 더해 0~1로 여닫히게 합니다.
-    const trem = ctx.createGain(); trem.gain.value = 0.5;
-    const pulse = ctx.createOscillator(); pulse.type = 'square'; pulse.frequency.value = rate;
-    const pg = ctx.createGain(); pg.gain.value = 0.5; pulse.connect(pg).connect(trem.gain);
-    const phrase = ctx.createGain(); phrase.gain.value = 0.022;
-    const slow = ctx.createOscillator(); slow.type = 'square'; slow.frequency.value = 0.55 + Math.random() * 0.3;
-    const sg = ctx.createGain(); sg.gain.value = 0.022; slow.connect(sg).connect(phrase.gain);
-    const p = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
-    if (p.pan) p.pan.value = pan;
-    o.connect(trem).connect(phrase).connect(p).connect(out);
-    [o, pulse, slow].forEach((n) => n.start(t + delay));
-    return [o, pulse, slow];
-  };
-  const nodes = [wind, lfo, lfo2, ...cricket(4300, 28, -0.6, 0), ...cricket(4700, 34, 0.5, 0.7), ...cricket(3900, 22, 0.1, 1.3)];
-  wind.start(t); lfo.start(t); lfo2.start(t);
-  // 멀리서 가끔 들리는 '찌르-찌르' (위치·높이가 매번 조금씩 달라 가만히 서 있어도 밤공원이 살아 있게)
-  const chirp = () => {
-    if (!night) return;
-    const t0 = ctx.currentTime + 0.02, f = 3400 + Math.random() * 2200, reps = 2 + Math.floor(Math.random() * 3);
-    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-    if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; pan.connect(out); }
-    for (let i = 0; i < reps; i++) {
-      const o = ctx.createOscillator(); o.frequency.value = f;
-      const g = ctx.createGain(); const s0 = t0 + i * 0.16;
-      g.gain.setValueAtTime(0.0001, s0); g.gain.exponentialRampToValueAtTime(0.012, s0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.11);
-      o.connect(g).connect(pan || out); o.start(s0); o.stop(s0 + 0.12);
-    }
-    night.chirpTimer = setTimeout(chirp, 1400 + Math.random() * 3200);
-  };
-  night = { out, nodes, chirpTimer: setTimeout(chirp, 900) };
+  const nodes = windNodes(ctx, out, t);
+  const n = { out, nodes, next: t + 1.2 + Math.random() * 2 };
+  // 몇 초 앞까지 미리 예약해 두고 주기적으로 이어 붙임 (탭이 잠깐 느려져도 끊기지 않게)
+  const fill = () => { if (night === n && n.next < ctx.currentTime + 10) n.next = scheduleCrickets(ctx, out, Math.max(n.next, ctx.currentTime + 0.05), ctx.currentTime + 10); };
+  night = n;
+  fill();
+  n.timer = setInterval(fill, 3000);
 }
 
 export function stopNight() {
   if (!night || !ctx) return;
-  const { out, nodes, chirpTimer } = night; night = null;
-  clearTimeout(chirpTimer);
+  const { out, nodes, timer } = night; night = null;
+  clearInterval(timer);
   const t = ctx.currentTime;
   out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value, t); out.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
-  setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch { /* 이미 정지 */ } }), 900);
+  setTimeout(() => { nodes.forEach((x) => { try { x.stop(); } catch { /* 이미 정지 */ } }); out.disconnect(); }, 900);
 }
 
 export const isNightOn = () => !!night;
+
+/**
+ * 점검용 미리 듣기: 같은 소리 함수로 오프라인 렌더링 (실제 재생과 같은 합성 코드)
+ * scene 'bench' = 벤치에 가만히 앉은 seconds초 / 'walk' = 잔디를 걷다 산책로로 이어 걷기
+ * layers: 'all' | 'wind' | 'crickets' | 'steps'
+ */
+export async function renderPreview(scene = 'bench', seconds = 30, layers = 'all', seed = 7) {
+  let s = seed;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const c = new OfflineAudioContext(2, Math.round(44100 * seconds), 44100);
+  const out = c.createGain(); out.gain.value = 0.9; out.connect(c.destination);
+  const marks = [];
+  if (layers === 'all' || layers === 'wind') windNodes(c, out, 0);
+  if (layers === 'all' || layers === 'crickets') scheduleCrickets(c, out, 1.2, seconds - 1, rnd);
+  if (scene === 'walk' && (layers === 'all' || layers === 'steps')) {
+    let last = -1;
+    for (let i = 0, t = 1; t < seconds - 0.5; i++, t += 0.24) {
+      const surface = t < seconds / 2 ? 'grass' : 'path';
+      let v = Math.floor(rnd() * 4); if (v === last) v = (v + 1) % 4; last = v;
+      const level = 0.7 + rnd() * 0.3;
+      stepSound(c, out, t, surface, v, level);
+      marks.push({ t: +t.toFixed(2), surface, v, level: +level.toFixed(2) });
+    }
+  }
+  const buf = await c.startRendering();
+  return { sampleRate: buf.sampleRate, left: buf.getChannelData(0), right: buf.getChannelData(1), marks };
+}

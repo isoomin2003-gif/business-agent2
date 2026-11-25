@@ -11,6 +11,8 @@ import { openDiary, forgetEntry } from './ui/diary.js';
 import { openBookshelf } from './ui/bookshelf.js';
 import { openBook } from './ui/book.js';
 import { openPlaces, openRadio, openTree, openStarWish, openWish, openMyWishes } from './ui/outdoor.js';
+import { openManual, openShop } from './ui/manual.js';
+import { iconSvg } from './render/icons.js';
 import { radio } from './audio/radio.js';
 import * as amb from './audio/ambience.js';
 import * as roomMusic from './audio/roommusic.js';
@@ -93,7 +95,6 @@ function openCreateAccount() {
       user = { ...user, ...r.user };
       showNick(user.nickname); paintAccount();
       $('#start-btn').textContent = '내 방으로 들어가기';
-      if (gameReady) $('#hud-name').textContent = `🙂 ${user.nickname}`;
       m.close();
       nickMsg('정식 계정이 되었어요. 지금까지의 기록은 그대로예요.');
     } catch (err) {
@@ -136,6 +137,10 @@ async function logout() {
 
 async function boot() {
   drawLanding();
+  // 상단 아이콘 버튼: 상점(줄무늬 천막 가판대), 사용 설명서(청록 표지 책)
+  document.querySelectorAll('[data-open-manual]').forEach((b) => { b.innerHTML = iconSvg('book', 24); b.addEventListener('click', () => openManual(0)); });
+  $('#shop-btn').innerHTML = iconSvg('shop', 24);
+  $('#shop-btn').addEventListener('click', () => openShop({ onManual: () => openManual(3) }));
   net.on('online', ({ count }) => paintOnline(count));
   net.onConnect(() => { if (gameReady) onReconnect(); });
   net.connect();
@@ -216,7 +221,6 @@ let gameReady = false;
 function enterGame() {
   $('#landing').hidden = true;
   $('#game').hidden = false;
-  $('#hud-name').textContent = `🙂 ${user.nickname}`;
   if (gameReady) { stage.resize(); enterRoom('center'); return; }
   gameReady = true;
   stage = new Stage();
@@ -225,6 +229,8 @@ function enterGame() {
   bindHud();
   setInterval(tickSounds, 110);
   enterRoom('center');
+  // 처음 온 사람에게는 사용 설명서를 한 번 펼쳐 줌 (이후엔 상단 책 버튼으로)
+  if (!store.get('manualSeen')) { store.set('manualSeen', true); openManual(0); }
 }
 
 // ───────────── 공통 ─────────────
@@ -257,7 +263,7 @@ async function enterRoom(from = 'door') {
   refreshRoomBooks();
   if (!store.get('firstHintShown')) {
     store.set('firstHintShown', true);
-    firstHint = stage.banner(150, 92, '책상을 눌러 오늘의 한 장을 기록해 보세요', 20000, 'first-hint');
+    firstHint = stage.banner(196, 92, '책상을 눌러 오늘의 한 장을 기록해 보세요', 20000, 'first-hint');
   }
 }
 

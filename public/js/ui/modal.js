@@ -1,10 +1,10 @@
 let stack = [];
 
-export function openModal({ title, html = '', wide = false, paper = false, onClose, label } = {}) {
+export function openModal({ title, html = '', wide = false, paper = false, onClose, label, cls = '' } = {}) {
   const root = document.getElementById('modal-root');
   const back = document.createElement('div');
   back.className = 'modal-backdrop';
-  back.innerHTML = `<div class="modal${wide ? ' wide' : ''}${paper ? ' paper' : ''}" role="dialog" aria-modal="true" aria-label="${label || title || ''}">
+  back.innerHTML = `<div class="modal${wide ? ' wide' : ''}${paper ? ' paper' : ''}${cls ? ` ${cls}` : ''}" role="dialog" aria-modal="true" aria-label="${label || title || ''}">
     <button class="btn btn-small close" aria-label="닫기">✕</button>
     ${title ? `<h2>${title}</h2>` : ''}<div class="modal-body">${html}</div></div>`;
   root.appendChild(back);
