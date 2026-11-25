@@ -126,7 +126,10 @@ export async function getSong(id, ownerId) {
 }
 /** 라디오에 등록된 AI 작곡곡의 음원 위치 (누구나 들을 수 있는 곡에만 씀) */
 export async function songStorageKey(id) {
-  return (await getDb().get('SELECT storage_key FROM compositions WHERE id = ?', [String(id).replace(/^ai:/, '')]))?.storage_key || null;
+  const bare = String(id).replace(/^ai:/, '');
+  const row = await getDb().get('SELECT storage_key FROM compositions WHERE id = ?', [bare]);
+  // '내가 만든 노래' 이전(2026-11-25 전)에 신청된 곡은 음원이 radio/ai-<id>.wav 에 있음
+  return row?.storage_key || `radio/ai-${bare}.wav`;
 }
 
 /** 라디오 목록에 등록할 곡 정보 (입력한 문장은 공개하지 않음) */

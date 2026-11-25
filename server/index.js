@@ -17,6 +17,16 @@ import { OUTDOOR } from '../public/js/shared/places.js';
 
 const db = await initDb();
 const storage = await initStorage();
+// 요청에 따라 라디오의 AI 작곡곡 「첫 눈 내린 아침」 정리 — 이미 지웠으면 아무 일도 하지 않음 (TEMP-CLEANUP, 확인 후 삭제)
+let cleanedSongs = 0;
+for (const id of ['a_o0cFVB8ujI']) {
+  const r = await db.run("DELETE FROM radio_tracks WHERE id = ? AND kind = 'generated'", [`ai:${id}`]);
+  if (!r.changes) continue;
+  cleanedSongs += r.changes;
+  await storage.remove(`radio/ai-${id}.wav`).catch(() => {});
+  const c = await db.get('SELECT storage_key FROM compositions WHERE id = ?', [id]);
+  if (c) { await storage.remove(c.storage_key).catch(() => {}); await db.run('DELETE FROM compositions WHERE id = ?', [id]); }
+}
 const libCount = await loadLibrary(); // 신청되어 라디오에 추가된 곡
 console.log(`[radio] 추가된 곡 ${libCount}개 불러옴`);
 
@@ -162,6 +172,7 @@ const STARTED_AT = new Date().toISOString();
 app.get('/healthz', (req, res) => res.json({
   ok: true, db: db.kind, storage: storage.kind, startedAt: STARTED_AT,
   commit: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || undefined,
+  cleanedSongs, // TEMP-CLEANUP
 }));
 
 app.use('/api', diaryRouter);
