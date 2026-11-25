@@ -17,13 +17,6 @@ import { OUTDOOR } from '../public/js/shared/places.js';
 
 const db = await initDb();
 const storage = await initStorage();
-// 배포 사이트 점검(2026-11-25)으로 만든 AI 작곡곡 정리 — 이미 지웠으면 아무 일도 하지 않음 (TEMP-CLEANUP, 확인 후 삭제)
-let cleanedSongs = 0;
-for (const r of await db.all("SELECT id, storage_key FROM compositions WHERE prompt = ? AND id NOT IN (SELECT substr(id, 4) FROM radio_tracks WHERE kind = 'generated')", ['창가에 앉은 고양이의 낮잠'])) {
-  await storage.remove(r.storage_key).catch(() => {});
-  cleanedSongs += (await db.run('DELETE FROM compositions WHERE id = ?', [r.id])).changes;
-}
-if (cleanedSongs) console.log(`[cleanup] 점검용 AI 작곡곡 ${cleanedSongs}개 정리`);
 const libCount = await loadLibrary(); // 신청되어 라디오에 추가된 곡
 console.log(`[radio] 추가된 곡 ${libCount}개 불러옴`);
 
@@ -169,7 +162,6 @@ const STARTED_AT = new Date().toISOString();
 app.get('/healthz', (req, res) => res.json({
   ok: true, db: db.kind, storage: storage.kind, startedAt: STARTED_AT,
   commit: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || undefined,
-  cleanedSongs, // TEMP-CLEANUP
 }));
 
 app.use('/api', diaryRouter);
