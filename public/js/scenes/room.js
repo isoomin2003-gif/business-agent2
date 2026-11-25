@@ -1,6 +1,6 @@
 // 내 방: 확정 배경 그림(장밋빛 벽, 창문, 벽걸이 CD 플레이어, 책상과 의자, 책장, 나무문, 러그) 위에 기능을 연결
 import { rect, glow } from '../render/pixel.js';
-import { drawBackdrop, redrawParts, drawRotatedDisc } from '../render/backdrops.js';
+import { drawBackdrop, redrawParts, drawRotatedDisc, drawColoredBooks } from '../render/backdrops.js';
 import { isPlaying, cdAngle } from '../audio/roommusic.js';
 
 // 그림 속 CD 플레이어(창문 바로 오른쪽): 몸체·CD 중심·반지름 (320×180 좌표)
@@ -8,7 +8,10 @@ const CD = { x: 104, y: 57, w: 24, h: 23, cx: 115.5, cy: 67, r: 8.2 };
 
 export const room = {
   id: 'room',
-  background(c) { drawBackdrop(c, 'room'); },
+  background(c, ctx) {
+    drawBackdrop(c, 'room');
+    drawColoredBooks(c, ctx?.bookCount || 0); // 기록 하나마다 책등 하나에 색
+  },
   animate(c, t) {
     // CD: 재생 중에는 그림 속 CD가 천천히 돌고, 멈추면 그 각도에서 정지
     const on = isPlaying();

@@ -14,7 +14,7 @@ export function forgetEntry(entryId) {
   draft.saved = null;
 }
 
-export async function openDiary({ onViewInShelf } = {}) {
+export async function openDiary({ onViewInShelf, onSaved } = {}) {
   const today = localToday();
   if (draft.date !== today) Object.assign(draft, { date: today, sentence: store.get(`draft:${today}`, ''), videoId: null, videoUrl: null, saved: null });
   const touch = matchMedia('(pointer: coarse)').matches;
@@ -112,6 +112,7 @@ export async function openDiary({ onViewInShelf } = {}) {
       setStatus(r.created ? '책장에 오늘의 한 장을 꽂았어요!' : '오늘의 페이지를 고쳐 저장했어요.', 'ok');
       $('#d-view').hidden = false; $('#d-save').textContent = '수정 저장하기';
       toast('저장 완료 — 책장에서 다시 볼 수 있어요 📚');
+      if (r.created) onSaved?.(r.entry); // 새 기록이면 방 책장에 책등 하나가 색을 입음
     } catch (e) {
       setStatus(`${e.message} 작성 중인 문장은 그대로 남아 있어요.`, 'err');
     } finally { $('#d-save').disabled = false; }

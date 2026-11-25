@@ -13,6 +13,20 @@ for (const [id, src] of Object.entries(files)) {
   IMGS[id] = img;
   loads.push(img.decode ? img.decode().catch(() => new Promise((r) => { img.onload = r; img.onerror = r; })) : new Promise((r) => { img.onload = r; img.onerror = r; }));
 }
+// 방 책장의 책등 19개: 기록이 생길 때마다 하나씩 색을 입힌 그림(책등 윤곽 밖은 투명)과 위치
+const booksImg = new Image(); booksImg.src = '/img/scenes/room-books.png';
+let booksMeta = null;
+loads.push(booksImg.decode().catch(() => {}), fetch('/img/scenes/room-books.json').then((r) => r.json()).then((j) => { booksMeta = j; }).catch(() => {}));
+export const BOOK_SLOTS = () => booksMeta?.books.length || 0;
+/** 앞에서부터 n권의 책등에 색 (선반 위 칸부터 왼쪽→오른쪽) */
+export function drawColoredBooks(c, n) {
+  if (!booksMeta || !booksImg.complete || !n) return;
+  const [iw, ih] = booksMeta.image, kx = W / iw, ky = H / ih;
+  const smooth = c.imageSmoothingEnabled; c.imageSmoothingEnabled = true;
+  for (const b of booksMeta.books.slice(0, n)) c.drawImage(booksImg, b.ax, 0, b.w, b.h, b.x * kx, b.y * ky, b.w * kx, b.h * ky);
+  c.imageSmoothingEnabled = smooth;
+}
+
 /** 세 그림을 모두 불러왔을 때 */
 export const ready = Promise.all(loads);
 export const loaded = (id) => IMGS[id]?.complete && IMGS[id].naturalWidth > 0;

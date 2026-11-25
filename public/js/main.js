@@ -36,7 +36,7 @@ function drawLanding() {
   cv.width = 320 * SCALE; cv.height = 180 * SCALE;
   const c = cv.getContext('2d');
   c.setTransform(SCALE, 0, 0, SCALE, 0, 0); c.imageSmoothingEnabled = false;
-  room.background(c);
+  room.background(c, { bookCount: user ? bookCount : 0 });
   room.animate(c, 0);
   drawAvatarScaled(c, PLACES.room.seats.chair.x, PLACES.room.seats.chair.y + 2, 3, { pose: 'sit', back: true });
   room.props[0].draw(c);
@@ -162,6 +162,7 @@ async function boot() {
     const { user: u } = await api('/api/me');
     if (u) {
       user = user || u; showNick(u.nickname); paintAccount();
+      refreshRoomBooks(); // 이미 쓴 기록을 첫 화면 그림의 책장에도 바로
       $('#start-btn').textContent = '내 방으로 들어가기';
       let enter = false;
       try { enter = sessionStorage.getItem('haruEnter') === '1'; sessionStorage.removeItem('haruEnter'); } catch { /* */ }
@@ -258,7 +259,7 @@ async function enterRoom(from = 'door') {
   place = 'room';
   roomSeat = null;
   roomMusic.stop(); // 방에 들어올 때는 늘 조용하게 (직접 켜야 재생)
-  stage.setScene(room, PLACES.room, 'room', {});
+  stage.setScene(room, PLACES.room, 'room', { bookCount });
   const n = PLACES.room.targets[from] || PLACES.room.spawn;
   stage.upsert('me', { nickname: user.nickname, color: user.color, me: true, points: [{ x: n.x, y: n.y }], startAt: net.now(), seat: null });
   setHud();
@@ -269,12 +270,16 @@ async function enterRoom(from = 'door') {
   }
 }
 
-/** 방 책장의 책 그림을 실제 기록 수에 맞춤 */
+/** 방 책장: 기록 수만큼 책등에 색을 입힘 (위 칸부터 왼쪽→오른쪽, 기록이 없으면 모두 배경 그림의 중성색) */
+let bookCount = 0;
+async function loadBookCount() {
+  try { const { months } = await api('/api/diary/months'); bookCount = months.reduce((s, m) => s + m.count, 0); } catch { /* */ }
+  return bookCount;
+}
 async function refreshRoomBooks() {
-  try {
-    const { months } = await api('/api/diary/months');
-    if (place === 'room') stage.renderBackground({ bookCount: months.reduce((s, m) => s + m.count, 0) });
-  } catch { /* */ }
+  await loadBookCount();
+  if (place === 'room' && stage) stage.renderBackground({ bookCount });
+  if (!$('#landing').hidden) drawLanding();
 }
 
 /**
@@ -314,7 +319,7 @@ function openExample(examples, id) {
 async function onRoomHotspot(id) {
   if (id === 'desk') {
     firstHint?.remove(); firstHint = null;
-    if (await sitAtDesk()) openDiary({ onViewInShelf: openMonth });
+    if (await sitAtDesk()) openDiary({ onViewInShelf: openMonth, onSaved: () => refreshRoomBooks() });
   } else if (id === 'shelf') {
     if (await walkLocal(PLACES.room.targets.shelf)) openBookshelf({ onOpenMonth: openMonth, onOpenExample: openExample });
   } else if (id === 'door') {

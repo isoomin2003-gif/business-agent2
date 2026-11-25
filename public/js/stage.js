@@ -6,8 +6,8 @@ import { now } from './net.js';
 
 const W = 320, H = 180;
 const BUBBLE_MS = 5200;
-// 아바타는 배경 그림의 의자·벤치 높이에 맞춰 2배 크기 (서 있을 때 키 38, 앉으면 30 — 320×180 좌표 기준)
-export const AVATAR_SCALE = 2;
+// 아바타 크기 배율 (320×180 좌표 기준 서 있을 때 키 18 × 배율)
+export const AVATAR_SCALE = 1; // 배경 교체 전과 같은 크기 (장면 높이 180 중 키 18)
 const STAND_H = 18 * AVATAR_SCALE, SIT_H = 15 * AVATAR_SCALE;
 /** 아바타를 발 위치 기준으로 확대해 그림 (픽셀 경계를 캔버스 실제 픽셀에 맞춤) */
 function drawBig(c, x, y, color, opts) {
@@ -257,7 +257,7 @@ export class Stage {
     }
     if (this.place && this.placeId !== 'room') {
       for (const [id, s] of Object.entries(this.place.seats)) {
-        if (x >= s.x - 9 - pad && x <= s.x + 9 + pad && y >= s.y - 24 - pad && y <= s.y + 6 + pad) {
+        if (x >= s.x - 9 - pad && x <= s.x + 9 + pad && y >= s.y - (STAND_H - 4) - pad && y <= s.y + 6 + pad) {
           const holder = this.seatsTaken.get(id);
           const mine = holder && this.entities.get(holder)?.me;
           return { type: 'seat', id, label: mine ? '내 자리' : holder ? '누군가 앉아 있어요' : '앉기' };
