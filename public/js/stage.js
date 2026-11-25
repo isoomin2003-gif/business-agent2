@@ -1,21 +1,37 @@
 // 캔버스 렌더링, 아바타/말풍선, 클릭(터치) 판정을 담당합니다.
 import { drawAvatar, rect, glow, rng } from './render/pixel.js';
+import { SCALE, ready } from './render/backdrops.js';
 import { positionAt, snapWalkable } from './shared/places.js';
 import { now } from './net.js';
 
 const W = 320, H = 180;
 const BUBBLE_MS = 5200;
+// 아바타는 배경 그림의 의자·벤치 높이에 맞춰 2배 크기 (서 있을 때 키 38, 앉으면 30 — 320×180 좌표 기준)
+export const AVATAR_SCALE = 2;
+const STAND_H = 18 * AVATAR_SCALE, SIT_H = 15 * AVATAR_SCALE;
+/** 아바타를 발 위치 기준으로 확대해 그림 (픽셀 경계를 캔버스 실제 픽셀에 맞춤) */
+function drawBig(c, x, y, color, opts) {
+  c.save();
+  c.translate(Math.round(x * SCALE) / SCALE, Math.round(y * SCALE) / SCALE);
+  c.scale(AVATAR_SCALE, AVATAR_SCALE);
+  drawAvatar(c, 0, 0, color, opts);
+  c.restore();
+}
+export { drawBig as drawAvatarScaled };
 export const STEP_MS = 240; // 걷기 그림에서 한 발을 내딛는 간격 (발소리도 여기에 맞춤)
 
 export class Stage {
   constructor() {
     this.el = document.getElementById('stage');
     this.canvas = document.getElementById('canvas');
+    // 내부 해상도 = 320×180 × SCALE. 그리는 좌표는 계속 320×180 (배경·클릭 영역·아바타가 같은 기준)
+    this.canvas.width = W * SCALE; this.canvas.height = H * SCALE;
     this.c = this.canvas.getContext('2d');
+    this.c.setTransform(SCALE, 0, 0, SCALE, 0, 0);
     this.c.imageSmoothingEnabled = false;
     this.overlay = document.getElementById('overlay');
     this.tooltip = document.getElementById('tooltip');
-    this.bg = document.createElement('canvas'); this.bg.width = W; this.bg.height = H;
+    this.bg = document.createElement('canvas'); this.bg.width = W * SCALE; this.bg.height = H * SCALE;
     this.entities = new Map();
     this.scene = null; this.place = null; this.placeId = null;
     this.hover = null; this.seatsTaken = new Map();
@@ -49,11 +65,14 @@ export class Stage {
     this.scene = scene; this.place = place; this.placeId = placeId;
     this.entities.clear(); this.overlay.innerHTML = ''; this.seatsTaken.clear(); this.star = null; this.banners.clear();
     this.renderBackground(ctx);
+    ready.then(() => { if (this.scene === scene) this.renderBackground(this.bgCtx); }); // 그림을 아직 불러오는 중이었으면 다 받은 뒤 다시
   }
 
   renderBackground(ctx = {}) {
+    this.bgCtx = ctx;
     const b = this.bg.getContext('2d');
-    b.clearRect(0, 0, W, H);
+    b.setTransform(1, 0, 0, 1, 0, 0); b.clearRect(0, 0, this.bg.width, this.bg.height);
+    b.setTransform(SCALE, 0, 0, SCALE, 0, 0); b.imageSmoothingEnabled = false;
     this.scene.background(b, ctx);
   }
 
@@ -115,7 +134,8 @@ export class Stage {
   draw() {
     if (!this.scene) return;
     const c = this.c, t = now();
-    c.drawImage(this.bg, 0, 0);
+    c.setTransform(SCALE, 0, 0, SCALE, 0, 0); c.imageSmoothingEnabled = false;
+    c.drawImage(this.bg, 0, 0, W, H);
     this.scene.animate?.(c, t, this.sceneState);
     this.drawStar(c, t);
     this.drawMarkers(c, t);
@@ -129,14 +149,14 @@ export class Stage {
       const seated = !p.moving && e.seat;
       const seatDef = seated ? this.place.seats[e.seat] : null;
       const frame = Math.floor(t / STEP_MS);
-      drawAvatar(c, p.x, seated ? p.y + 2 : p.y, e.color, {
+      drawBig(c, p.x, seated ? p.y + 2 : p.y, e.color, {
         pose: p.moving ? 'walk' : seated ? 'sit' : 'stand', frame, dir: p.dir, back: seatDef?.back, me: e.me,
       });
       if (e.me) {
         if (p.moving && frame !== e.stepFrame) this.handlers.step?.(p);
         e.stepFrame = p.moving ? frame : null;
       }
-      if (e.wish && e.wish.until > Date.now()) this.drawWishIcon(c, p.x, (seated ? p.y - 13 : p.y - 18) - 8, t, this.hover?.type === 'wish' && this.hover.id === e.id);
+      if (e.wish && e.wish.until > Date.now()) this.drawWishIcon(c, p.x, (seated ? p.y + 2 - SIT_H : p.y - STAND_H) - 8, t, this.hover?.type === 'wish' && this.hover.id === e.id);
     }
     this.layoutOverlay();
   }
@@ -172,7 +192,7 @@ export class Stage {
       const hot = this.hover?.type === 'seat' && this.hover.id === id;
       if (taken) continue;
       c.globalAlpha = hot ? 0.95 : 0.3;
-      rect(c, s.x - 6, s.y - 3, 12, 2, hot ? '#ffe39a' : '#ffffff');
+      rect(c, s.x - 7, s.y - 1, 14, 1, hot ? '#ffe39a' : '#ffffff');
       c.globalAlpha = 1;
     }
   }
@@ -211,7 +231,7 @@ export class Stage {
       const lower = seated && Number(String(e.seat).replace(/\D/g, '')) % 2 === 0;
       e.tag.style.transform = lower ? 'translate(-50%, 115%)' : 'translate(-50%, 0)';
       if (e.bubble) {
-        const headTop = footY - (seated ? 15 : 18) - (e.wish && e.wish.until > Date.now() ? 12 : 2);
+        const headTop = footY - (seated ? SIT_H : STAND_H) - (e.wish && e.wish.until > Date.now() ? 12 : 2);
         // 말풍선 실제 폭·높이로 무대 안에 들어오게 (좁은 모바일 화면에서 잘리지 않도록)
         const bw = e.bubble.el.offsetWidth || 160, bh = e.bubble.el.offsetHeight || 40;
         e.bubble.el.style.left = `${Math.min(Math.max(p.x * k, bw / 2 + 4), W2 - bw / 2 - 4)}px`;
@@ -232,12 +252,12 @@ export class Stage {
     for (const e of this.entities.values()) {
       if (!e.wish || e.wish.until <= Date.now()) continue;
       const p = this.pos(e); const seated = !p.moving && e.seat;
-      const iy = (seated ? p.y - 13 : p.y - 18) - 8;
+      const iy = (seated ? p.y + 2 - SIT_H : p.y - STAND_H) - 8;
       if (Math.abs(x - p.x) <= 6 + pad && Math.abs(y - iy) <= 6 + pad) return { type: 'wish', id: e.id, label: e.me ? '내가 빈 소원' : `${e.nickname} 님의 소원 보기` };
     }
     if (this.place && this.placeId !== 'room') {
       for (const [id, s] of Object.entries(this.place.seats)) {
-        if (x >= s.x - 9 - pad && x <= s.x + 9 + pad && y >= s.y - 16 - pad && y <= s.y + 6 + pad) {
+        if (x >= s.x - 9 - pad && x <= s.x + 9 + pad && y >= s.y - 24 - pad && y <= s.y + 6 + pad) {
           const holder = this.seatsTaken.get(id);
           const mine = holder && this.entities.get(holder)?.me;
           return { type: 'seat', id, label: mine ? '내 자리' : holder ? '누군가 앉아 있어요' : '앉기' };

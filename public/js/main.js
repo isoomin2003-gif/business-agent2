@@ -1,11 +1,11 @@
 import { api, store, koDate } from './api.js';
 import * as net from './net.js';
-import { Stage } from './stage.js';
+import { Stage, drawAvatarScaled } from './stage.js';
+import { SCALE, ready as backdropsReady } from './render/backdrops.js';
 import { PLACES, routeTo, pathDuration } from './shared/places.js';
 import { room } from './scenes/room.js';
 import { rooftop } from './scenes/rooftop.js';
 import { park, noteSlots } from './scenes/park.js';
-import { drawAvatar } from './render/pixel.js';
 import { toast, closeAllModals, openModal } from './ui/modal.js';
 import { openDiary, forgetEntry } from './ui/diary.js';
 import { openBookshelf } from './ui/bookshelf.js';
@@ -33,13 +33,15 @@ let firstHint = null;
 // ───────────── 첫 화면 ─────────────
 function drawLanding() {
   const cv = $('#landing-art');
-  cv.width = 320; cv.height = 180;
+  cv.width = 320 * SCALE; cv.height = 180 * SCALE;
   const c = cv.getContext('2d');
-  room.background(c, { bookCount: 7 });
+  c.setTransform(SCALE, 0, 0, SCALE, 0, 0); c.imageSmoothingEnabled = false;
+  room.background(c);
   room.animate(c, 0);
-  drawAvatar(c, PLACES.room.seats.chair.x, PLACES.room.seats.chair.y + 2, 3, { pose: 'sit', back: true });
+  drawAvatarScaled(c, PLACES.room.seats.chair.x, PLACES.room.seats.chair.y + 2, 3, { pose: 'sit', back: true });
   room.props[0].draw(c);
 }
+backdropsReady.then(() => { if (!$('#landing').hidden) drawLanding(); }); // 배경 그림을 다 받으면 첫 화면 그림도 다시
 
 // ───────────── 첫 화면 (닉네임 확인·변경) ─────────────
 let pendingNick = null; // 아직 계정이 없는 첫 방문자의 닉네임(바로 시작하기를 누를 때 계정 생성)

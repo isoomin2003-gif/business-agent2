@@ -27,7 +27,12 @@ export function drawAvatar(c, x, y, colorIdx, { pose = 'stand', frame = 0, dir =
   c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(x - 5, y - 1, 10, 2);
   if (me && !sit) { c.fillStyle = 'rgba(255,207,110,.55)'; c.fillRect(x - 6, y, 12, 1); }
   // 다리
-  if (sit) {
+  if (sit && !back) {
+    // 앞을 보고 앉음: 허벅지는 좌판 위, 종아리는 좌판 앞으로 내려옴
+    rect(c, x - 4, top + 12, 8, 2, pal.pants);
+    rect(c, x - 3, top + 14, 2, 4, pal.pants); rect(c, x + 1, top + 14, 2, 4, pal.pants);
+    rect(c, x - 3, top + 18, 3, 1, OUT); rect(c, x + 1, top + 18, 3, 1, OUT);
+  } else if (sit) {
     rect(c, x - 4, top + 12, 8, 2, pal.pants);
     rect(c, x - 4, top + 14, 3, 1, OUT); rect(c, x + 1, top + 14, 3, 1, OUT);
   } else {

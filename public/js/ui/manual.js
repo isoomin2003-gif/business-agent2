@@ -8,15 +8,17 @@ import { rect, disc, glow, rng, stars } from '../render/pixel.js';
 import { room } from '../scenes/room.js';
 import { rooftop } from '../scenes/rooftop.js';
 import { park } from '../scenes/park.js';
+import { SCALE, ready as backdropsReady } from '../render/backdrops.js';
 import { composeLimitText, WISH_TTL_DAYS, TREE_NOTES } from '../shared/limits.js';
 
-const SCENES = { room: [room, { bookCount: 7 }], rooftop: [rooftop, {}], park: [park, { treeCount: 8 }] };
+const SCENES = { room: [room, {}], rooftop: [rooftop, {}], park: [park, {}] };
 const rendered = {};
 function sceneCanvas(id) {
   if (rendered[id]) return rendered[id];
   const [scene, ctx] = SCENES[id];
-  const cv = document.createElement('canvas'); cv.width = 320; cv.height = 180;
+  const cv = document.createElement('canvas'); cv.width = 320 * SCALE; cv.height = 180 * SCALE;
   const c = cv.getContext('2d');
+  c.setTransform(SCALE, 0, 0, SCALE, 0, 0);
   scene.background(c, ctx);
   scene.animate?.(c, 0, {});
   for (const p of scene.props || []) p.draw(c);
@@ -25,11 +27,11 @@ function sceneCanvas(id) {
 }
 /** 장면의 한 부분을 잘라 픽셀 그대로 확대한 그림 */
 function crop(id, r, height = 64) {
-  const cv = document.createElement('canvas'); cv.width = r.w; cv.height = r.h;
-  cv.getContext('2d').drawImage(sceneCanvas(id), r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+  const cv = document.createElement('canvas'); cv.width = r.w * SCALE; cv.height = r.h * SCALE;
+  cv.getContext('2d').drawImage(sceneCanvas(id), r.x * SCALE, r.y * SCALE, r.w * SCALE, r.h * SCALE, 0, 0, cv.width, cv.height);
   cv.className = 'm-pic';
-  const k = Math.max(1, Math.floor(height / r.h));
-  cv.style.width = `${r.w * k}px`; cv.style.height = `${r.h * k}px`;
+  const k = height / r.h;
+  cv.style.width = `${Math.round(r.w * k)}px`; cv.style.height = `${Math.round(r.h * k)}px`;
   return cv;
 }
 const svgPic = (name, size = 56) => { const d = document.createElement('div'); d.className = 'm-pic m-svg'; d.innerHTML = iconSvg(name, size); return d; };
@@ -39,30 +41,30 @@ const PAGES = [
     id: 'room', tab: 'house', title: '내 방',
     lead: '빈 바닥을 클릭하면 걸어가요. 사용하고 싶은 물건을 클릭해 보세요.',
     items: [
-      [() => crop('room', { x: 116, y: 96, w: 66, h: 42 }), '책상', '오늘의 일기 쓰기 (영상 하나 + 한 문장)'],
-      [() => crop('room', { x: 206, y: 28, w: 64, h: 100 }), '책장', '지난 일기 보기 · 기억 찾기'],
-      [() => crop('room', { x: 101, y: 53, w: 31, h: 44 }, 88), 'CD 플레이어', '한 번 클릭하면 켜지고, 다시 클릭하면 꺼져요'],
-      [() => crop('room', { x: 272, y: 42, w: 42, h: 72 }, 72), '문', '옥상이나 공원으로 나가기'],
+      [() => crop('room', { x: 118, y: 90, w: 60, h: 52 }, 64), '책상', '오늘의 일기 쓰기 (영상 하나 + 한 문장)'],
+      [() => crop('room', { x: 204, y: 30, w: 62, h: 100 }, 80), '책장', '지난 일기 보기 · 기억 찾기'],
+      [() => crop('room', { x: 100, y: 53, w: 32, h: 44 }, 72), 'CD 플레이어', '한 번 클릭하면 켜지고, 다시 클릭하면 꺼져요'],
+      [() => crop('room', { x: 268, y: 42, w: 46, h: 84 }, 72), '문', '옥상이나 공원으로 나가기'],
     ],
   },
   {
     id: 'rooftop', tab: 'radio', title: '옥상',
     lead: '문을 누르고 옥상을 고르면 와요. 다른 사람과 같은 음악을 들으며 쉬어요.',
     items: [
-      [() => crop('rooftop', { x: 36, y: 98, w: 96, h: 42 }), '벤치', '빈자리를 클릭하면 가서 앉아요'],
-      [() => crop('rooftop', { x: 228, y: 88, w: 44, h: 56 }), '라디오', `지금 나오는 곡 · 곡 신청(한 사람당 한 번에 한 곡) · 새 노래 추천 · 작곡<small>${composeLimitText()}<br>완성된 곡은 ‘내가 만든 노래’에 자동으로 저장돼요.</small>`],
+      [() => crop('rooftop', { x: 66, y: 100, w: 66, h: 34 }, 48), '벤치', '빈자리를 클릭하면 가서 앉아요'],
+      [() => crop('rooftop', { x: 220, y: 84, w: 42, h: 48 }, 64), '라디오', `지금 나오는 곡 · 곡 신청(한 사람당 한 번에 한 곡) · 새 노래 추천 · 작곡<small>${composeLimitText()}<br>완성된 곡은 ‘내가 만든 노래’에 자동으로 저장돼요.</small>`],
       [() => svgPic('chat'), '말하기', '화면 아래 입력창에 한마디 (50자까지)'],
-      [() => crop('rooftop', { x: 270, y: 84, w: 50, h: 64 }), '계단실 문', '내 방으로 돌아가기'],
+      [() => crop('rooftop', { x: 276, y: 66, w: 42, h: 66 }, 72), '계단실 문', '내 방으로 돌아가기'],
     ],
   },
   {
     id: 'park', tab: 'tree', title: '공원',
     lead: '조용한 밤 산책길이에요. 걸으면 발소리, 가만히 있으면 풀벌레와 바람 소리가 들려요.',
     items: [
-      [() => crop('park', { x: 146, y: 98, w: 60, h: 40 }, 80), '벤치', '빈자리를 클릭하면 앉아서 쉬어요'],
-      [() => crop('park', { x: 36, y: 24, w: 92, h: 132 }, 80), '소원 나무', `소원 쓰기 · 소원 모아보기 · 공감과 응원<small>소원은 ${WISH_TTL_DAYS}일 동안 공원에 머물러요. 나무에는 최근 ${TREE_NOTES}개까지 걸려요.</small>`],
+      [() => crop('park', { x: 148, y: 114, w: 100, h: 38 }, 42), '벤치', '빈자리를 클릭하면 앉아서 쉬어요'],
+      [() => crop('park', { x: 10, y: 14, w: 146, h: 136 }, 96), '소원 나무', `소원 쓰기 · 소원 모아보기 · 공감과 응원<small>소원은 ${WISH_TTL_DAYS}일 동안 공원에 머물러요. 나무에는 최근 ${TREE_NOTES}개까지 걸려요.</small>`],
       [() => svgPic('star'), '별똥별', '지나가면 ‘소원 빌기’ 버튼이 잠깐 떠요'],
-      [() => crop('park', { x: 292, y: 104, w: 30, h: 64 }, 128), '입구 표지판', '내 방으로 돌아가기'],
+      [() => crop('park', { x: 288, y: 108, w: 32, h: 44 }, 64), '집 모양 표지판', '내 방으로 돌아가기'],
     ],
   },
   {
@@ -122,7 +124,8 @@ function drawCover(cv) {
   c.font = '12px Galmuri11'; c.fillStyle = '#e8d9b0'; c.textAlign = 'center'; c.fillText('하루 한 장', cx, 150);
 }
 
-export function openManual(start = 0) {
+export async function openManual(start = 0) {
+  await backdropsReady; // 물건 그림은 배경 그림에서 잘라 씀
   let page = Math.max(0, Math.min(PAGES.length - 1, start));
   const m = openModal({
     label: '사용 설명서', cls: 'manual-modal',

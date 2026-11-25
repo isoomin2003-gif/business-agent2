@@ -19,12 +19,12 @@ test('모든 장소의 출발점·목표 지점은 걸을 수 있는 곳', () =>
 });
 
 test('가구·벤치·나무를 돌아가는 경로', () => {
-  const room = routeTo('room', { x: 40, y: 130 }, { x: 250, y: 150 });
-  assert.ok(room.length > 2 && allWalkable('room', room), '책상을 돌아감');
-  const roof = routeTo('rooftop', { x: 28, y: 125 }, { x: 250, y: 150 });
-  assert.ok(allWalkable('rooftop', roof), '벤치·라디오 상자를 돌아감');
-  const park = routeTo('park', { x: 40, y: 150 }, { x: 120, y: 130 });
-  assert.ok(park.length > 2 && allWalkable('park', park), '나무를 돌아감');
+  const room = routeTo('room', { x: 60, y: 133 }, { x: 190, y: 133 });
+  assert.ok(room.length > 2 && allWalkable('room', room), '책상·의자를 돌아감');
+  const roof = routeTo('rooftop', { x: 50, y: 139 }, { x: 240, y: 139 });
+  assert.ok(roof.length > 2 && allWalkable('rooftop', roof), '벤치를 돌아감');
+  const park = routeTo('park', { x: 30, y: 145 }, { x: 112, y: 145 });
+  assert.ok(park.length > 2 && allWalkable('park', park), '벚나무 줄기를 돌아감');
 });
 
 test('모든 좌석에 앉고, 앉은 자리에서 일어나 걸어갈 수 있다', () => {
