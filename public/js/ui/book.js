@@ -1,4 +1,4 @@
-// 월별 책: 페이지마다 날짜, 한 문장, 영상 (+ 내 페이지 삭제)
+// 월별 책: 페이지마다 날짜, 한 문장, 사진 또는 영상 (+ 내 페이지 삭제)
 import { api, koDate, esc } from '../api.js';
 import { openModal, toast } from './modal.js';
 
@@ -13,11 +13,13 @@ export function openBook({ title, entries, index = 0, example = false, onDeleted
       ${example ? '<span class="badge warn">예시 기록 · 내 책장과 분리됨</span>' : `<span class="muted" style="font-size:13px">🔒 나만 볼 수 있는 기록</span>
         <div style="margin-top:auto">
           <button class="btn btn-small btn-ghost" id="b-del" style="color:#8a3b2a">🗑 이 페이지 삭제</button>
-          <div id="b-confirm" class="notice" hidden>이 날의 문장과 영상을 지울까요? <b>되돌릴 수 없어요.</b>
+          <div id="b-confirm" class="notice" hidden>이 날의 문장과 ${e.mediaType === 'photo' ? '사진' : '영상'}을 지울까요? <b>되돌릴 수 없어요.</b>
             <div class="row" style="margin-top:6px"><button class="btn btn-small" id="b-yes" style="background:#c8553d;color:#fff">삭제</button><button class="btn btn-small" id="b-no">취소</button></div>
           </div>
         </div>`}</div>
-      <div class="right"><div class="video-box"><video src="${esc(e.videoUrl)}#t=0.1" ${e.poster ? `poster="${esc(e.poster)}"` : ''} controls playsinline preload="metadata"></video></div></div>
+      <div class="right"><div class="video-box">${e.mediaType === 'photo'
+        ? `<img src="${esc(e.videoUrl)}" alt="${koDate(e.date)}의 사진">`
+        : `<video src="${esc(e.videoUrl)}#t=0.1" ${e.poster ? `poster="${esc(e.poster)}"` : ''} controls playsinline preload="metadata"></video>`}</div></div>
     </div>`;
     m.$('#b-num').textContent = `${i + 1} / ${entries.length}`;
     m.$('#b-prev').disabled = i === 0; m.$('#b-next').disabled = i === entries.length - 1;

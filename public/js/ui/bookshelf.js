@@ -103,8 +103,8 @@ export async function openBookshelf({ onOpenMonth, onOpenExample, startMode = 'm
   renderChips();
   if (startMode === 'example') setMode('example');
 
-  const card = (s) => `<button class="memory-card" data-id="${s.id}" data-date="${s.date}">
-    <time>${koDate(s.date)}</time><span>“${esc(s.sentence)}”</span></button>`;
+  const card = (s) => `<button class="memory-card" data-id="${s.id}" data-date="${s.date}" title="그날의 일기 열기">
+    <time>${koDate(s.date)}</time><span>“${esc(s.sentence)}”</span><em class="open-hint">그날의 일기 열기 ›</em></button>`;
 
   function render(r) {
     const out = $('#m-result');

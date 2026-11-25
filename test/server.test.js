@@ -215,3 +215,32 @@ test('닉네임: 현재 게스트 이름만 바뀌고 일기는 그대로, 옥�
   assert.equal((await fetch(`${BASE}/api/me`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{"nickname":"x"}' })).status, 401);
   sa.close(); sb.close();
 });
+
+test('사진 일기: 사진+한 문장 저장, 주인만 열람, 같은 날 영상으로 바꿔도 기록 수는 1', async () => {
+  const a = await guest(), b = await guest();
+  // 1×1 PNG
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360f8cf00000301010018dd8db40000000049454e44ae426082', 'hex');
+  const up = async (buf, type, name) => {
+    const fd = new FormData(); fd.append('video', new Blob([buf], { type }), name);
+    const r = await fetch(`${BASE}/api/videos`, { method: 'POST', headers: { cookie: a.cookie }, body: fd });
+    return { status: r.status, body: await r.json() };
+  };
+  const bad = await up(Buffer.from('이건 사진이 아니에요'.repeat(20)), 'image/png', 'x.png');
+  assert.equal(bad.status, 400); // 형식 이름만 사진인 파일은 거절
+  const p = await up(png, 'image/png', 'today.png');
+  assert.equal(p.status, 200); assert.equal(p.body.mediaType, 'photo');
+  const saved = await a.call(`/api/diary/day/${today}`, { method: 'PUT', body: JSON.stringify({ sentence: '사진으로 남긴 하루', videoId: p.body.videoId }) });
+  assert.equal(saved.body.created, true); assert.equal(saved.body.entry.mediaType, 'photo');
+  const img = await fetch(BASE + p.body.url, { headers: { cookie: a.cookie } });
+  assert.equal(img.status, 200); assert.match(img.headers.get('content-type'), /image\/png/);
+  assert.equal((await fetch(BASE + p.body.url, { headers: { cookie: b.cookie } })).status, 404);
+  assert.equal((await fetch(BASE + p.body.url)).status, 401);
+  const month = (await a.call(`/api/diary/month/${today.slice(0, 7)}`)).body.entries;
+  assert.equal(month[0].mediaType, 'photo');
+  // 같은 날 영상으로 교체 → 수정(created false), 기록 수(책장 색)는 그대로 1
+  const v = await a.call('/api/videos/sample', { method: 'POST', body: JSON.stringify({ sampleId: 'rain' }) });
+  const again = await a.call(`/api/diary/day/${today}`, { method: 'PUT', body: JSON.stringify({ sentence: '사진으로 남긴 하루', videoId: v.body.videoId }) });
+  assert.equal(again.body.created, false); assert.equal(again.body.entry.mediaType, 'video');
+  assert.equal((await a.call('/api/diary/months')).body.months[0].count, 1);
+  assert.equal((await fetch(BASE + p.body.url, { headers: { cookie: a.cookie } })).status, 404); // 바꾸기 전 사진은 지워짐
+});

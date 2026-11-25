@@ -420,7 +420,7 @@ function onStar(ev) {
     starBtn.className = 'btn btn-glow wish-btn';
     starBtn.textContent = '🌠 별똥별이 지나갔어요 · 소원 빌기';
     starBtn.addEventListener('click', () => { hideStarButton(); openStarWish({ starId: ev.id, place: ev.place }); });
-    stage.overlay.appendChild(starBtn);
+    stage.fixed.appendChild(starBtn); // 화면에 고정 (장면을 좌우로 옮겨도 보이게)
     const b = starBtn;
     setTimeout(() => { if (starBtn === b) hideStarButton(); }, 20000);
   }, Math.max(0, showAt - Date.now()));

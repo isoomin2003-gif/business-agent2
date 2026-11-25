@@ -31,6 +31,12 @@ export class Stage {
     this.c.imageSmoothingEnabled = false;
     this.overlay = document.getElementById('overlay');
     this.tooltip = document.getElementById('tooltip');
+    // world: 배경 캔버스 + 이름표·말풍선 층. 휴대폰 세로 화면에서는 world만 좌우로 움직여 장면 일부를 크게 보여 줌
+    this.world = document.createElement('div'); this.world.id = 'world';
+    this.el.insertBefore(this.world, this.canvas); this.world.append(this.canvas, this.overlay);
+    // 화면에 고정되는 버튼 층 (별똥별 '소원 빌기' 등 — world와 함께 움직이지 않음)
+    this.fixed = document.createElement('div'); this.fixed.className = 'fixed-layer'; this.el.appendChild(this.fixed);
+    this.pan = false; this.cam = 0; this.freeLook = false; this.snapCam = true; this.drag = null; this.noClickUntil = 0;
     this.bg = document.createElement('canvas'); this.bg.width = W * SCALE; this.bg.height = H * SCALE;
     this.entities = new Map();
     this.scene = null; this.place = null; this.placeId = null;
@@ -39,6 +45,7 @@ export class Stage {
     this.banners = new Set();
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    this.bindPan();
     this.canvas.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') this.onHover(e); });
     this.canvas.addEventListener('pointerleave', () => { this.hover = null; this.tooltip.hidden = true; this.canvas.classList.remove('pointer'); });
     this.canvas.addEventListener('click', (e) => this.onClick(e));
@@ -49,6 +56,7 @@ export class Stage {
   on(name, fn) { this.handlers[name] = fn; }
 
   resize() {
+    if (this.resizePan()) return;
     const hud = 56, bottom = document.getElementById('bottom')?.hidden === false ? 64 : 8;
     const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || Infinity, window.visualViewport?.width || Infinity);
     const vh = window.visualViewport?.height || window.innerHeight;
@@ -61,9 +69,80 @@ export class Stage {
     this.scale = w / W;
   }
 
+  /**
+   * 휴대폰 세로 화면: 장면을 크게(가로 약 160 좌표 = 장면의 절반 정도) 보여 주고 좌우로 이동.
+   * 배경·클릭 영역·아바타·이름표가 모두 world 안에서 같은 배율로 커지므로 비율과 클릭 위치는 PC와 같음
+   */
+  resizePan() {
+    const vw = Math.min(window.innerWidth, document.documentElement.clientWidth || Infinity);
+    const vh = window.innerHeight;
+    const portraitPhone = vw < 700 && vh > vw * 1.15;
+    this.el.classList.toggle('pan', portraitPhone);
+    if (!portraitPhone) {
+      this.pan = false;
+      this.el.style.height = ''; this.world.style.width = ''; this.world.style.transform = '';
+      return false;
+    }
+    // 키보드가 올라와 창 높이가 잠깐 줄어도 장면 크기가 출렁이지 않게, 같은 가로폭에서 본 가장 큰 높이를 기준으로
+    if (this._panVw !== vw) { this._panVw = vw; this._panVh = 0; }
+    this._panVh = Math.max(this._panVh, vh);
+    const stageW = vw - 16, inner = stageW - 8;
+    const hud = document.querySelector('.hud')?.offsetHeight || 96;
+    const bottom = document.getElementById('bottom')?.hidden === false ? 72 : 8;
+    const availH = this._panVh - hud - bottom - 40;
+    let k = inner / 160;
+    k = Math.max(inner / 320, Math.min(k, availH / H));
+    this.pan = true; this.k = k; this.viewW = inner; this.worldW = W * k;
+    document.documentElement.style.setProperty('--stage-w', `${stageW}px`);
+    this.el.style.height = `${Math.round(H * k) + 8}px`;
+    this.world.style.width = `${this.worldW}px`;
+    this.scale = k;
+    this.snapCam = true;
+    return true;
+  }
+
+  /** 휴대폰 세로 화면의 카메라: 평소엔 내 아바타를 부드럽게 따라가고, 손가락으로 밀면 아바타는 그대로 두고 양옆을 미리 봄 */
+  updateCamera() {
+    if (!this.pan) return;
+    const max = Math.max(0, this.worldW - this.viewW);
+    if (!this.freeLook && !this.drag?.moved) {
+      const me = [...this.entities.values()].find((e) => e.me);
+      if (me) {
+        const target = Math.min(max, Math.max(0, this.pos(me).x * this.k - this.viewW / 2));
+        this.cam = this.snapCam ? target : this.cam + (target - this.cam) * 0.12;
+        this.snapCam = false;
+      }
+    }
+    this.cam = Math.min(max, Math.max(0, this.cam));
+    this.world.style.transform = `translate3d(${-Math.round(this.cam)}px,0,0)`;
+  }
+
+  bindPan() {
+    this.el.addEventListener('pointerdown', (e) => {
+      if (!this.pan || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      this.drag = { x: e.clientX, y: e.clientY, cam: this.cam, moved: false, id: e.pointerId };
+    });
+    this.el.addEventListener('pointermove', (e) => {
+      const d = this.drag;
+      if (!d || d.id !== e.pointerId) return;
+      const dx = e.clientX - d.x, dy = e.clientY - d.y;
+      if (!d.moved && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) { d.moved = true; this.freeLook = true; this.tooltip.hidden = true; }
+      if (d.moved) this.cam = d.cam - dx;
+    });
+    const end = (e) => {
+      const d = this.drag;
+      if (!d || d.id !== e.pointerId) return;
+      if (d.moved) this.noClickUntil = performance.now() + 450; // 스와이프가 끝날 때 이동·클릭이 실행되지 않게
+      this.drag = null;
+    };
+    this.el.addEventListener('pointerup', end);
+    this.el.addEventListener('pointercancel', (e) => { if (this.drag?.moved) this.noClickUntil = performance.now() + 450; this.drag = null; });
+  }
+
   setScene(scene, place, placeId, ctx = {}) {
     this.scene = scene; this.place = place; this.placeId = placeId;
     this.entities.clear(); this.overlay.innerHTML = ''; this.seatsTaken.clear(); this.star = null; this.banners.clear();
+    this.freeLook = false; this.snapCam = true; this.fixed.innerHTML = '';
     this.renderBackground(ctx);
     ready.then(() => { if (this.scene === scene) this.renderBackground(this.bgCtx); }); // 그림을 아직 불러오는 중이었으면 다 받은 뒤 다시
   }
@@ -159,6 +238,7 @@ export class Stage {
       if (e.wish && e.wish.until > Date.now()) this.drawWishIcon(c, p.x, (seated ? p.y + 2 - SIT_H : p.y - STAND_H) - 8, t, this.hover?.type === 'wish' && this.hover.id === e.id);
     }
     this.layoutOverlay();
+    this.updateCamera();
   }
 
   drawWishIcon(c, x, y, t, hot) {
@@ -243,8 +323,9 @@ export class Stage {
 
   // ───── 입력 ─────
   toLocal(e) {
-    const r = this.canvas.getBoundingClientRect();
-    return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H, px: e.clientX - r.left, py: e.clientY - r.top };
+    // 캔버스의 실제 화면 위치(좌우로 옮긴 뒤 포함) 기준 → 눈에 보이는 곳을 누르면 그 물건
+    const r = this.canvas.getBoundingClientRect(), sr = this.el.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H, px: e.clientX - sr.left - 4, py: e.clientY - sr.top - 4 };
   }
 
   hitTest(x, y, touch = false) {
@@ -265,7 +346,8 @@ export class Stage {
       }
     }
     for (const h of this.scene?.hotspots || []) {
-      if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return { type: 'hotspot', id: h.id, label: h.label };
+      const hp = touch ? (h.w < 45 ? 5 : 2) : 0; // 터치: 작은 물건은 그림 주변 5좌표까지
+      if (x >= h.x - hp && x <= h.x + h.w + hp && y >= h.y - hp && y <= h.y + h.h + hp) return { type: 'hotspot', id: h.id, label: h.label };
     }
     // 빈 바닥: 걸을 수 있는 곳(또는 아주 가까운 곳)을 누르면 그 위치로 걷기
     if (this.placeId) {
@@ -287,10 +369,12 @@ export class Stage {
   }
 
   onClick(e) {
+    if (performance.now() < this.noClickUntil) return; // 방금 화면을 밀었음
     const touch = e.pointerType === 'touch' || (e.pointerType === undefined && matchMedia('(pointer: coarse)').matches);
     const p = this.toLocal(e);
     const hit = this.hitTest(p.x, p.y, touch);
     if (!hit) return this.handlers.empty?.(p);
+    this.freeLook = false; // 무언가를 누르면 다시 내 아바타를 따라감
     if (hit.type === 'floor') this.markClick(hit.x, hit.y);
     if (touch && hit.label) {
       this.tooltip.hidden = false; this.tooltip.textContent = hit.label;
