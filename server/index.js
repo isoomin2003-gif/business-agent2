@@ -16,15 +16,6 @@ import { OUTDOOR } from '../public/js/shared/places.js';
 
 const db = await initDb();
 const storage = await initStorage();
-// 배포 사이트 점검(2026-11-25)용으로 만든 정식 계정 정리 — 이미 지웠으면 아무 일도 하지 않음 (TEMP-CLEANUP, 확인 후 삭제)
-for (const key of ['점검7254', '점검7254b']) {
-  const u = await db.get('SELECT id FROM users WHERE account_key = ?', [key]);
-  if (!u) continue;
-  const vids = await db.all('SELECT storage_key, source FROM videos WHERE user_id = ?', [u.id]);
-  for (const v of vids) if (v.source === 'upload') await storage.remove(v.storage_key).catch(() => {});
-  await db.run('DELETE FROM users WHERE id = ?', [u.id]); // 일기·영상·소원·로그인 세션은 함께 지워짐 (ON DELETE CASCADE)
-  console.log(`[cleanup] 점검용 계정 정리: ${key} (영상 ${vids.length}개 기록 포함)`);
-}
 const libCount = await loadLibrary(); // 신청되어 라디오에 추가된 곡
 console.log(`[radio] 추가된 곡 ${libCount}개 불러옴`);
 
