@@ -16,7 +16,7 @@ import { OUTDOOR } from '../public/js/shared/places.js';
 
 const db = await initDb();
 const storage = await initStorage();
-// 배포 사이트 점검(2026-11-25)용으로 만든 정식 계정 2개 정리 — 한 번 지운 뒤에는 아무 일도 하지 않음 (TEMP-CLEANUP)
+// 배포 사이트 점검(2026-11-25)용으로 만든 정식 계정 정리 — 이미 지웠으면 아무 일도 하지 않음 (TEMP-CLEANUP, 확인 후 삭제)
 for (const key of ['점검7254', '점검7254b']) {
   const u = await db.get('SELECT id FROM users WHERE account_key = ?', [key]);
   if (!u) continue;
