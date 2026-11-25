@@ -5,6 +5,7 @@ import { now } from './net.js';
 
 const W = 320, H = 180;
 const BUBBLE_MS = 5200;
+export const STEP_MS = 240; // 걷기 그림에서 한 발을 내딛는 간격 (발소리도 여기에 맞춤)
 
 export class Stage {
   constructor() {
@@ -127,9 +128,14 @@ export class Stage {
       const { e, p } = it;
       const seated = !p.moving && e.seat;
       const seatDef = seated ? this.place.seats[e.seat] : null;
+      const frame = Math.floor(t / STEP_MS);
       drawAvatar(c, p.x, seated ? p.y + 2 : p.y, e.color, {
-        pose: p.moving ? 'walk' : seated ? 'sit' : 'stand', frame: Math.floor(t / 170), dir: p.dir, back: seatDef?.back, me: e.me,
+        pose: p.moving ? 'walk' : seated ? 'sit' : 'stand', frame, dir: p.dir, back: seatDef?.back, me: e.me,
       });
+      if (e.me) {
+        if (p.moving && frame !== e.stepFrame) this.handlers.step?.(p);
+        e.stepFrame = p.moving ? frame : null;
+      }
       if (e.wish && e.wish.until > Date.now()) this.drawWishIcon(c, p.x, (seated ? p.y - 13 : p.y - 18) - 8, t, this.hover?.type === 'wish' && this.hover.id === e.id);
     }
     this.layoutOverlay();

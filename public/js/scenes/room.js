@@ -1,4 +1,8 @@
-import { rect, stars, glow, vgrad, crescent } from '../render/pixel.js';
+import { rect, stars, glow, vgrad, crescent, disc } from '../render/pixel.js';
+import { isPlaying, cdAngle } from '../audio/roommusic.js';
+
+// 책상 위 벽걸이 CD 플레이어 (가운데 둥근 CD는 animate에서 그려 재생 중에만 돌아감)
+const CD = { x: 132, y: 31, w: 36, h: 26, cx: 150, cy: 44 };
 
 export const room = {
   id: 'room',
@@ -24,8 +28,13 @@ export const room = {
     rect(c, 18, 16, 14, 70, '#c4687a'); rect(c, 88, 16, 14, 70, '#c4687a'); // 커튼
     for (let y = 18; y < 86; y += 6) { rect(c, 22, y, 1, 4, '#a24f60'); rect(c, 95, y, 1, 4, '#a24f60'); }
     rect(c, 14, 14, 92, 3, '#5a3a26');
-    // 액자
-    rect(c, 122, 36, 26, 20, '#5a3a26'); rect(c, 125, 39, 20, 14, '#7fb8a8'); rect(c, 125, 47, 20, 6, '#4f8a6a'); rect(c, 138, 41, 4, 4, '#ffe08a');
+    // 벽걸이 CD 플레이어 (본체·스피커 망·걸이)
+    rect(c, CD.x + 6, CD.y - 3, 2, 3, '#3a2a22'); rect(c, CD.x + CD.w - 8, CD.y - 3, 2, 3, '#3a2a22'); // 벽걸이 고리
+    rect(c, CD.x, CD.y, CD.w, CD.h, '#1f1b26'); rect(c, CD.x + 1, CD.y + 1, CD.w - 2, CD.h - 2, '#3a3446');
+    rect(c, CD.x + 1, CD.y + 1, CD.w - 2, 1, '#55506a'); // 윗면 빛
+    for (const sx of [CD.x + 3, CD.x + CD.w - 8]) for (let yy = CD.y + 6; yy < CD.y + 20; yy += 2) for (let xx = 0; xx < 5; xx += 2) rect(c, sx + xx, yy, 1, 1, '#221e2b'); // 스피커 망
+    disc(c, CD.cx, CD.cy, 10, '#26212f'); // CD가 들어가는 둥근 자리
+    rect(c, CD.x + 3, CD.y + CD.h - 4, 4, 2, '#55506a'); rect(c, CD.x + 9, CD.y + CD.h - 4, 4, 2, '#55506a'); // 버튼
     // 책장
     rect(c, 210, 32, 56, 94, '#5a3a26'); rect(c, 214, 36, 48, 86, '#3e281b');
     for (const sy of [36, 64, 92]) rect(c, 214, sy + 26, 48, 3, '#6d4a32');
@@ -61,6 +70,30 @@ export const room = {
     rect(c, 166, 104, 1, 11, '#3c3c46'); rect(c, 163, 114, 7, 1, '#3c3c46'); rect(c, 161, 100, 11, 4, '#f2c66d'); rect(c, 162, 104, 9, 1, '#fff2c0');
   },
   animate(c, t) {
+    // CD: 재생 중에는 천천히 돌고(무지갯빛 반사·라벨 표시가 함께 회전), 멈추면 그 자리에서 정지
+    const on = isPlaying(), a = cdAngle();
+    disc(c, CD.cx, CD.cy, 8, '#aeb4c2'); disc(c, CD.cx, CD.cy, 7, '#d6dae4');
+    for (let r = 3; r <= 7; r++) {
+      for (const [da, col] of [[0, '#9fd8ff'], [Math.PI, '#ffc4e8'], [Math.PI / 2, '#fff3b0']]) {
+        const k = r === 7 ? 0.08 : 0;
+        rect(c, Math.round(CD.cx + Math.cos(a + da + k) * r), Math.round(CD.cy + Math.sin(a + da + k) * r), 1, 1, col);
+      }
+    }
+    disc(c, CD.cx, CD.cy, 3, '#e06c75');
+    rect(c, Math.round(CD.cx + Math.cos(a) * 2), Math.round(CD.cy + Math.sin(a) * 2), 1, 1, '#ffe0e4'); // 라벨 무늬
+    rect(c, CD.cx, CD.cy, 1, 1, '#1f1b26'); // 가운데 구멍
+    // 전원 표시등 + 재생 중이면 음표가 피어오름
+    rect(c, CD.x + CD.w - 6, CD.y + CD.h - 4, 2, 2, on ? '#7ee08a' : '#6a3a3a');
+    if (on) {
+      glow(c, CD.x + CD.w - 5, CD.y + CD.h - 3, 5, '126,224,138', 0.5);
+      for (let i = 0; i < 2; i++) {
+        const k = ((t / 2200) + i * 0.5) % 1;
+        const nx = CD.x + CD.w + 2 + Math.sin(k * 6 + i) * 3, ny = CD.y + 18 - k * 22;
+        c.globalAlpha = 1 - k;
+        rect(c, Math.round(nx), Math.round(ny), 2, 2, '#ffe39a'); rect(c, Math.round(nx) + 1, Math.round(ny) - 4, 1, 4, '#ffe39a'); rect(c, Math.round(nx) + 2, Math.round(ny) - 4, 1, 1, '#ffe39a');
+        c.globalAlpha = 1;
+      }
+    }
     // 책상 조명의 따뜻한 빛
     const flick = 0.33 + Math.sin(t / 900) * 0.02;
     glow(c, 166, 106, 56, '255,200,120', flick);
@@ -78,5 +111,6 @@ export const room = {
     { id: 'desk', x: 122, y: 98, w: 56, h: 38, label: '다이어리 쓰기' },
     { id: 'shelf', x: 208, y: 30, w: 60, h: 98, label: '내 책장' },
     { id: 'door', x: 274, y: 44, w: 38, h: 70, label: '밖으로 나가기' },
+    { id: 'cd', x: CD.x - 2, y: CD.y - 4, w: CD.w + 4, h: CD.h + 6, get label() { return isPlaying() ? '음악 끄기' : '음악 틀기'; } },
   ],
 };

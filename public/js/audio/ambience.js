@@ -1,4 +1,5 @@
-// 공원 자연음: 외부 음원 없이 Web Audio로 직접 합성 (발소리 / 풀벌레 / 바람)
+// 공원 자연음: 외부 음원 없이 Web Audio로 직접 합성 (잔디·산책로 발소리 / 밤 풀벌레 / 약한 바람)
+// 공원에 들어서면 밤 소리가 계속되고(서 있을 때·앉았을 때 모두), 나가면 서서히 멈춤. 배경음악은 없음
 let ctx = null;
 let night = null;
 let master = null;
@@ -23,13 +24,37 @@ function noiseBuffer(sec = 2) {
   return b;
 }
 
-export function footstep() {
+const steps = []; // 최근 발소리 기록 (자동 점검용: 시각·바닥)
+export const stepLog = () => steps.slice(-40);
+
+/** 짧은 잡음 한 덩어리를 대역 필터로 걸러 소리 냄 */
+function grain(t, { dur, freq, q = 1, gain, attack = 0.003, type = 'bandpass' }) {
+  const src = ctx.createBufferSource(); src.buffer = noiseBuffer(Math.max(0.05, dur + 0.02));
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(master); src.start(t); src.stop(t + dur + 0.02);
+}
+
+/**
+ * 한 걸음 발소리.
+ * - grass: 풀잎이 눌리며 사락 — 높은 대역의 부드러운 잡음 + 아주 약한 낮은 울림
+ * - path : 흙·잔자갈 — 낮은 '툭' + 짧은 자갈 알갱이 소리 여러 개를 잘게 흩뿌림
+ */
+export function footstep(surface = 'grass') {
   if (!ensure()) return;
-  const t = ctx.currentTime;
-  const src = ctx.createBufferSource(); src.buffer = noiseBuffer(0.12);
-  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 520 + Math.random() * 260; f.Q.value = 0.9;
-  const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
-  src.connect(f).connect(g).connect(master); src.start(t); src.stop(t + 0.13);
+  const t = ctx.currentTime + 0.005;
+  steps.push({ at: Date.now(), surface }); if (steps.length > 80) steps.splice(0, 40);
+  const v = 0.85 + Math.random() * 0.3; // 걸음마다 조금씩 다르게
+  if (surface === 'path') {
+    grain(t, { dur: 0.07, freq: 180, q: 0.8, gain: 0.16 * v, attack: 0.004, type: 'lowpass' });
+    const n = 5 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < n; i++) grain(t + 0.004 + Math.random() * 0.09, { dur: 0.012 + Math.random() * 0.018, freq: 1800 + Math.random() * 2600, q: 2.5, gain: (0.05 + Math.random() * 0.06) * v, attack: 0.001 });
+  } else {
+    grain(t, { dur: 0.06, freq: 140, q: 0.7, gain: 0.05 * v, attack: 0.01, type: 'lowpass' });
+    grain(t + 0.01, { dur: 0.2, freq: 2600 + Math.random() * 900, q: 0.6, gain: 0.07 * v, attack: 0.03 });
+    grain(t + 0.05, { dur: 0.14, freq: 5200, q: 0.9, gain: 0.025 * v, attack: 0.02 });
+  }
 }
 
 export function startNight() {
@@ -61,12 +86,27 @@ export function startNight() {
   };
   const nodes = [wind, lfo, lfo2, ...cricket(4300, 28, -0.6, 0), ...cricket(4700, 34, 0.5, 0.7), ...cricket(3900, 22, 0.1, 1.3)];
   wind.start(t); lfo.start(t); lfo2.start(t);
-  night = { out, nodes };
+  // 멀리서 가끔 들리는 '찌르-찌르' (위치·높이가 매번 조금씩 달라 가만히 서 있어도 밤공원이 살아 있게)
+  const chirp = () => {
+    if (!night) return;
+    const t0 = ctx.currentTime + 0.02, f = 3400 + Math.random() * 2200, reps = 2 + Math.floor(Math.random() * 3);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; pan.connect(out); }
+    for (let i = 0; i < reps; i++) {
+      const o = ctx.createOscillator(); o.frequency.value = f;
+      const g = ctx.createGain(); const s0 = t0 + i * 0.16;
+      g.gain.setValueAtTime(0.0001, s0); g.gain.exponentialRampToValueAtTime(0.012, s0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.11);
+      o.connect(g).connect(pan || out); o.start(s0); o.stop(s0 + 0.12);
+    }
+    night.chirpTimer = setTimeout(chirp, 1400 + Math.random() * 3200);
+  };
+  night = { out, nodes, chirpTimer: setTimeout(chirp, 900) };
 }
 
 export function stopNight() {
   if (!night || !ctx) return;
-  const { out, nodes } = night; night = null;
+  const { out, nodes, chirpTimer } = night; night = null;
+  clearTimeout(chirpTimer);
   const t = ctx.currentTime;
   out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value, t); out.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
   setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch { /* 이미 정지 */ } }), 900);

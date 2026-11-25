@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Server } from 'socket.io';
 import { PLACES, OUTDOOR, routeTo, positionAt } from '../public/js/shared/places.js';
-import { COOKIE, parseCookieHeader, userFromToken } from './auth.js';
+import { COOKIE, parseCookieHeader, userFromToken, hashToken } from './auth.js';
 import { createRadio } from './radio.js';
 import { discover } from './discover.js';
 import { getTrack, addedIds, registerTrack, licenseLabel } from './library.js';
@@ -30,6 +30,56 @@ export function isUserIn(userId, place) {
 }
 
 export function getStar(id) { return stars.get(id); }
+
+// ───────────── 전체 접속자 수 ─────────────
+// 사람 단위로 셈: 계정(게스트 포함)은 user id, 아직 입장 전인 첫 방문자는 브라우저마다 정한 방문자 id.
+// 같은 계정의 여러 탭·브라우저는 1명. 연결이 끊겨도 잠깐(새로고침·장소 이동) 기다렸다가 빼서 숫자가 출렁이지 않게 함
+export const PRESENCE_GRACE_MS = Number(process.env.PRESENCE_GRACE_MS || 8000);
+const presence = new Map(); // key → { sockets: Set<socketId>, timer }
+let lastOnline = -1;
+export const onlineCount = () => presence.size;
+function broadcastOnline() {
+  const n = presence.size;
+  if (n === lastOnline || !io) return;
+  lastOnline = n;
+  io.emit('online', { count: n });
+}
+function presenceAdd(key, sid) {
+  let e = presence.get(key);
+  if (!e) { e = { sockets: new Set(), timer: null }; presence.set(key, e); }
+  clearTimeout(e.timer); e.timer = null;
+  e.sockets.add(sid);
+  broadcastOnline();
+}
+function presenceRemove(key, sid, { now = false } = {}) {
+  const e = presence.get(key);
+  if (!e) return;
+  e.sockets.delete(sid);
+  if (e.sockets.size) return;
+  clearTimeout(e.timer);
+  const drop = () => { if (presence.get(key) === e && !e.sockets.size) { presence.delete(key); broadcastOnline(); } };
+  if (now) drop(); else e.timer = setTimeout(drop, PRESENCE_GRACE_MS);
+}
+
+/** 같은 브라우저의 방문자 항목(다른 탭 포함)을 계정 항목으로 합침 → 같은 사람이 두 번 세어지지 않음 */
+function mergeVisitor(visitor, userKey) {
+  const v = presence.get(`v:${visitor}`);
+  if (!v) return;
+  presence.delete(`v:${visitor}`);
+  clearTimeout(v.timer);
+  for (const sid of v.sockets) {
+    const s = io.of('/').sockets.get(sid);
+    if (s) { s.data.presenceKey = userKey; presenceAdd(userKey, sid); }
+  }
+  broadcastOnline();
+}
+
+/** 로그인·로그아웃으로 바뀐 세션의 실시간 연결을 끊음 (그 브라우저는 새 세션으로 다시 연결) */
+export function dropSessionSockets(token) {
+  if (!io) return;
+  const h = hashToken(String(token));
+  for (const [, s] of io.of('/').sockets) if (s.data.sessionHash === h) s.disconnect(true);
+}
 
 const serialize = (p) => ({ sid: p.sid, userId: p.userId, nickname: p.nickname, color: p.color, seat: p.seat, points: p.points, startAt: p.startAt, wish: p.wish && p.wish.until > Date.now() ? p.wish : null });
 
@@ -139,21 +189,32 @@ export function setupRealtime(server) {
   radio.begin();
   OUTDOOR.forEach(scheduleStar);
 
+  // 세션이 없는 첫 방문자도 연결은 받아 접속자 수에 넣음 (장소 입장·대화 등은 세션이 있어야 함)
   io.use((socket, next) => {
-    userFromToken(parseCookieHeader(socket.handshake.headers.cookie)[COOKIE]).then((user) => {
-      if (!user) return next(new Error('no_session'));
+    const token = parseCookieHeader(socket.handshake.headers.cookie)[COOKIE];
+    const visitor = String(socket.handshake.auth?.visitor || '');
+    socket.data.visitor = /^[A-Za-z0-9_-]{8,64}$/.test(visitor) ? visitor : null;
+    userFromToken(token).then((user) => {
       socket.data.user = user;
+      socket.data.sessionHash = user ? hashToken(token) : null;
       socket.data.place = 'room';
+      socket.data.presenceKey = user ? `u:${user.id}` : socket.data.visitor ? `v:${socket.data.visitor}` : `s:${socket.id}`;
       next();
     }).catch((e) => { console.error('[socket] auth failed:', e.message); next(new Error('server_error')); });
   });
 
   io.on('connection', (socket) => {
     const user = socket.data.user;
+    // 같은 브라우저가 입장(게스트 생성)·로그인하면 방문자 id 대신 계정으로 셈 → 방문자 항목은 바로 뺌
+    if (user && socket.data.visitor) mergeVisitor(socket.data.visitor, socket.data.presenceKey);
+    presenceAdd(socket.data.presenceKey, socket.id);
+    socket.emit('online', { count: presence.size });
     socket.emit('counts', counts());
-    let lastChat = 0;
-
     socket.on('time', (cb) => typeof cb === 'function' && cb(Date.now()));
+    socket.on('disconnect', () => presenceRemove(socket.data.presenceKey, socket.id));
+    socket.emit('session', { user: user ? { id: user.id, nickname: user.nickname, registered: user.registered } : null });
+    if (!user) return; // 아래 기능은 세션이 있어야 함
+    let lastChat = 0;
 
     socket.on('join', (data, cb) => {
       const placeId = data?.place;

@@ -10,15 +10,19 @@ export function openPlaces({ counts, onChoose }) {
   const m = openModal({
     onClose: () => cleanup(),
     title: '어디로 나가 볼까요?', label: '장소 선택',
-    html: `<div class="places">${['rooftop', 'park'].map((id) => `
+    html: `<p class="place-sum" data-sum>옥상 ${counts.rooftop ?? 0}명 · 공원 ${counts.park ?? 0}명</p><div class="places">${['rooftop', 'park'].map((id) => `
       <button class="place-card ${id}" data-place="${id}">
         <span class="title">${id === 'rooftop' ? '🌃' : '🌳'} ${PLACES[id].name} · <span class="count" data-count="${id}">현재 ${counts[id] ?? 0}명</span></span>
         <span>${esc(PLACES[id].desc)}</span>
       </button>`).join('')}</div>
       <p class="muted" style="font-size:13px">접속자 수는 지금 그 장소에 있는 사람만 세요. 각자의 방에 있는 사람은 포함되지 않아요.</p>`,
   });
-  const off = net.on('counts', (c) => m.$$('[data-count]').forEach((el) => { el.textContent = `현재 ${c[el.dataset.count] ?? 0}명`; }));
-  api('/api/places').then(({ counts: c }) => m.$$('[data-count]').forEach((el) => { el.textContent = `현재 ${c[el.dataset.count] ?? 0}명`; })).catch(() => {});
+  const paint = (c) => {
+    m.$$('[data-count]').forEach((el) => { el.textContent = `현재 ${c[el.dataset.count] ?? 0}명`; });
+    m.$('[data-sum]').textContent = `옥상 ${c.rooftop ?? 0}명 · 공원 ${c.park ?? 0}명`;
+  };
+  const off = net.on('counts', paint);
+  api('/api/places').then(({ counts: c }) => paint(c)).catch(() => {});
   cleanup = off;
   m.$$('.place-card').forEach((b) => b.addEventListener('click', () => { m.close(); onChoose(b.dataset.place); }));
   return m;

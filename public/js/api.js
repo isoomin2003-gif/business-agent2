@@ -48,5 +48,7 @@ export const store = {
   get(k, d = null) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 저장소 사용 불가 */ } },
   del(k) { try { localStorage.removeItem(k); } catch { /* */ } },
+  /** 접두어로 시작하는 항목 모두 지움 (로그아웃 때 다이어리 임시 저장 문장 등) */
+  clearPrefix(prefix) { try { Object.keys(localStorage).filter((k) => k.startsWith(prefix)).forEach((k) => localStorage.removeItem(k)); } catch { /* */ } },
 };
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

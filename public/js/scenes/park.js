@@ -60,6 +60,11 @@ export const park = {
     glow(c, 80, 64, 40, '255,240,180', 0.06 + a * 0.05);
   },
   props: [],
+  /** 발 위치의 바닥: 산책로(흙·잔자갈) 또는 잔디 — 배경의 산책로 그림과 같은 식 */
+  surfaceAt(x, y) {
+    const top = 150 + Math.round(Math.sin(x / 50) * 5);
+    return y >= top - 1 && y <= top + 14 ? 'path' : 'grass';
+  },
   hotspots: [
     { id: 'tree', x: 40, y: 24, w: 86, h: 76, label: '소원 나무' }, // 나뭇잎
     { id: 'tree', x: 64, y: 100, w: 34, h: 56, label: '소원 나무' }, // 줄기 (주변 잔디는 걸어갈 수 있음)

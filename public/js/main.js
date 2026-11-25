@@ -6,13 +6,14 @@ import { room } from './scenes/room.js';
 import { rooftop } from './scenes/rooftop.js';
 import { park } from './scenes/park.js';
 import { drawAvatar } from './render/pixel.js';
-import { toast, closeAllModals } from './ui/modal.js';
+import { toast, closeAllModals, openModal } from './ui/modal.js';
 import { openDiary, forgetEntry } from './ui/diary.js';
 import { openBookshelf } from './ui/bookshelf.js';
 import { openBook } from './ui/book.js';
 import { openPlaces, openRadio, openTree, openStarWish, openWish, openMyWishes } from './ui/outdoor.js';
 import { radio } from './audio/radio.js';
 import * as amb from './audio/ambience.js';
+import * as roomMusic from './audio/roommusic.js';
 
 const SCENES = { room, rooftop, park };
 const $ = (s) => document.querySelector(s);
@@ -49,8 +50,98 @@ function nickMsg(text, err = false) {
   const el = $('#nick-msg'); el.hidden = !text; el.textContent = text || ''; el.classList.toggle('err', err);
 }
 
+// 로그아웃 뒤 뒤로가기로 돌아온 경우(브라우저가 저장해 둔 화면) 다시 불러와 개인 기록이 보이지 않게
+window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
+
+// ───────────── 전체 접속자 수 (홈·방·옥상·공원 공통 상단) ─────────────
+function paintOnline(n) { document.querySelectorAll('[data-online]').forEach((el) => { el.textContent = `현재 접속: ${n}명`; }); }
+
+// ───────────── 계정 (게스트 → 정식 계정, 로그인, 로그아웃) ─────────────
+function paintAccount() {
+  const reg = !!user?.registered;
+  $('#acct-badge').hidden = !reg;
+  $('#acct-create').hidden = reg;
+  $('#acct-login').hidden = reg;
+  $('#acct-logout').hidden = !reg;
+  $('#landing-fine').hidden = reg;
+}
+
+function accountForm(fields, submitLabel) {
+  return `<form class="acct-form" autocomplete="on">${fields}<p class="status" data-status aria-live="polite"></p>
+    <button class="btn btn-primary" data-submit>${submitLabel}</button></form>`;
+}
+
+function openCreateAccount() {
+  const m = openModal({
+    title: '내 계정 만들기', label: '내 계정 만들기',
+    html: `<p class="muted" style="font-size:14px;margin-top:0">지금 쓰고 있는 방과 다이어리·영상·소원을 그대로 이어받아 정식 계정이 돼요. 다른 브라우저나 컴퓨터에서도 닉네임과 비밀번호로 내 방에 들어올 수 있어요.</p>
+      ${accountForm(`<label>닉네임 (다른 사람과 겹치지 않는 이름, 최대 12자)<input name="nickname" maxlength="24" autocomplete="username" required></label>
+        <label>비밀번호 (8자 이상)<input name="password" type="password" maxlength="64" autocomplete="new-password" required></label>
+        <label>비밀번호 확인<input name="passwordConfirm" type="password" maxlength="64" autocomplete="new-password" required></label>`, '계정 만들기')}`,
+  });
+  const f = m.$('form'), st = m.$('[data-status]');
+  f.nickname.value = user?.nickname || pendingNick || '';
+  f.nickname.focus(); f.nickname.select();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nickname = f.nickname.value.trim(), password = f.password.value, passwordConfirm = f.passwordConfirm.value;
+    if (password !== passwordConfirm) { st.textContent = '비밀번호 확인이 일치하지 않아요.'; st.className = 'status err'; return; }
+    m.$('[data-submit]').disabled = true; st.textContent = ''; st.className = 'status';
+    try {
+      if (!user) { user = (await api('/api/guest', { method: 'POST', body: {} })).user; await net.reconnect(); }
+      const r = await api('/api/account/register', { method: 'POST', body: { nickname, password, passwordConfirm } });
+      user = { ...user, ...r.user };
+      showNick(user.nickname); paintAccount();
+      $('#start-btn').textContent = '내 방으로 들어가기';
+      if (gameReady) $('#hud-name').textContent = `🙂 ${user.nickname}`;
+      m.close();
+      nickMsg('정식 계정이 되었어요. 지금까지의 기록은 그대로예요.');
+    } catch (err) {
+      st.textContent = err.message; st.className = 'status err';
+      if (err.data?.error === 'taken') f.nickname.focus();
+    } finally { if (m.$('[data-submit]')) m.$('[data-submit]').disabled = false; }
+  });
+}
+
+function openLogin() {
+  const guestWarn = user && !user.registered
+    ? '<p class="notice" style="font-size:14px">지금 이 브라우저의 임시 게스트 기록은 정식 계정으로 만들어 두지 않으면, 다른 계정으로 로그인한 뒤에는 다시 열 수 없어요.</p>' : '';
+  const m = openModal({
+    title: '로그인', label: '로그인',
+    html: `${guestWarn}${accountForm(`<label>닉네임<input name="nickname" maxlength="24" autocomplete="username" required></label>
+      <label>비밀번호<input name="password" type="password" maxlength="64" autocomplete="current-password" required></label>`, '로그인')}`,
+  });
+  const f = m.$('form'), st = m.$('[data-status]');
+  f.nickname.focus();
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    m.$('[data-submit]').disabled = true; st.textContent = ''; st.className = 'status';
+    try {
+      await api('/api/account/login', { method: 'POST', body: { nickname: f.nickname.value.trim(), password: f.password.value } });
+      try { sessionStorage.setItem('haruEnter', '1'); } catch { /* */ }
+      location.replace('/'); // 새 계정으로 처음부터 다시 불러와 원래 방으로
+    } catch (err) {
+      st.textContent = err.message; st.className = 'status err';
+      m.$('[data-submit]').disabled = false;
+    }
+  });
+}
+
+async function logout() {
+  $('#acct-logout').disabled = true;
+  try { await api('/api/account/logout', { method: 'POST' }); } catch { /* 이미 끝난 세션 */ }
+  store.clearPrefix('draft:'); // 이 브라우저에 임시 저장된 다이어리 문장
+  location.replace('/');
+}
+
 async function boot() {
   drawLanding();
+  net.on('online', ({ count }) => paintOnline(count));
+  net.onConnect(() => { if (gameReady) onReconnect(); });
+  net.connect();
+  $('#acct-create').addEventListener('click', openCreateAccount);
+  $('#acct-login').addEventListener('click', openLogin);
+  $('#acct-logout').addEventListener('click', logout);
   // 느린 연결에서도 바로 누를 수 있도록 이전 세션 확인보다 먼저 연결
   $('#start-btn').addEventListener('click', start);
   $('#nick-edit').addEventListener('click', () => {
@@ -62,8 +153,16 @@ async function boot() {
   $('#nick-form').addEventListener('submit', saveNick);
   try {
     const { user: u } = await api('/api/me');
-    if (u) { user = user || u; showNick(u.nickname); $('#start-btn').textContent = '내 방으로 들어가기'; return; }
+    if (u) {
+      user = user || u; showNick(u.nickname); paintAccount();
+      $('#start-btn').textContent = '내 방으로 들어가기';
+      let enter = false;
+      try { enter = sessionStorage.getItem('haruEnter') === '1'; sessionStorage.removeItem('haruEnter'); } catch { /* */ }
+      if (enter) enterGame(); // 로그인 직후: 바로 원래 방으로
+      return;
+    }
   } catch { /* 첫 방문 */ }
+  paintAccount();
   try { pendingNick = (await api('/api/nickname/suggest')).nickname; } catch { pendingNick = null; }
   showNick(pendingNick || '(바로 시작하기를 누르면 정해져요)');
 }
@@ -92,6 +191,8 @@ async function start() {
     if (!user) {
       const r = await api('/api/guest', { method: 'POST', body: pendingNick ? { nickname: pendingNick } : {} });
       user = r.user;
+      await net.reconnect(); // 새 게스트 쿠키로 실시간 연결을 다시 맺음
+      paintAccount();
     }
     enterGame();
   } catch (e) {
@@ -102,10 +203,11 @@ async function start() {
 /** 방에서 '← 홈으로': 게스트 세션은 그대로 두고 첫 화면으로 */
 function goLanding() {
   closeAllModals();
+  roomMusic.stop();
   moveToken++; // 방에서 걷던 동작 취소
   $('#game').hidden = true;
   $('#landing').hidden = false;
-  showNick(user.nickname); nickMsg('');
+  showNick(user.nickname); nickMsg(''); paintAccount();
   $('#start-btn').textContent = '내 방으로 들어가기';
   drawLanding();
 }
@@ -120,7 +222,6 @@ function enterGame() {
   stage = new Stage();
   bindStage();
   bindSocket();
-  net.connect({ onConnect: onReconnect });
   bindHud();
   setInterval(tickSounds, 110);
   enterRoom('center');
@@ -148,6 +249,7 @@ function setHud() {
 async function enterRoom(from = 'door') {
   place = 'room';
   roomSeat = null;
+  roomMusic.stop(); // 방에 들어올 때는 늘 조용하게 (직접 켜야 재생)
   stage.setScene(room, PLACES.room, 'room', {});
   const n = PLACES.room.targets[from] || PLACES.room.spawn;
   stage.upsert('me', { nickname: user.nickname, color: user.color, me: true, points: [{ x: n.x, y: n.y }], startAt: net.now(), seat: null });
@@ -209,6 +311,11 @@ async function onRoomHotspot(id) {
     if (await walkLocal(PLACES.room.targets.shelf)) openBookshelf({ onOpenMonth: openMonth, onOpenExample: openExample });
   } else if (id === 'door') {
     if (await walkLocal(PLACES.room.targets.door)) openPlaces({ counts, onChoose: goOutside });
+  } else if (id === 'cd') {
+    // 재생 중이면 바로 정지. 꺼져 있으면 CD 플레이어 앞까지 걸어가 도착하자마자 재생 (한 번만 누르면 됨)
+    if (roomMusic.isPlaying()) { moveToken++; roomMusic.stop(); return; }
+    roomMusic.prime(); // 클릭 순간에 재생 권한을 얻어 둠 (모바일 자동재생 정책)
+    if (await walkLocal(PLACES.room.targets.cd)) { if (place === 'room') roomMusic.play(); } else roomMusic.cancelPrime();
   }
 }
 
@@ -223,8 +330,9 @@ async function goOutside(placeId, { silent = false } = {}) {
   const run = async () => {
     const r = await net.emit('join', { place: placeId });
     if (!r?.ok) { toast(r?.message || '입장하지 못했어요.'); return; }
+    roomMusic.stop();
     if (place === 'rooftop' && placeId !== 'rooftop') radio.leave();
-    if (placeId !== 'park') amb.stopNight();
+    if (placeId !== 'park') amb.stopNight(); else amb.startNight(); // 공원: 들어서자마자 밤 풀벌레·바람 소리
     place = placeId; mySid = r.you;
     stage.setScene(SCENES[placeId], PLACES[placeId], placeId, {});
     r.players.forEach((p) => stage.upsert(p.sid, toEntity(p)));
@@ -322,10 +430,12 @@ function bindStage() {
     if (!r?.ok && r?.message) toast(r.message);
   });
   stage.on('wish', (id) => { const e = stage.entities.get(id); if (e?.wish) openWish(e.wish.wishId); });
+  stage.on('step', onStep);
 }
 
 function bindSocket() {
   net.on('counts', (c) => { counts = c; });
+  net.on('session', (s) => { if (user && !s.user) toast('로그인 정보가 바뀌었어요. 새로고침해 주세요.', 6000); });
   net.on('player:join', (p) => { if (place !== 'room') stage.upsert(p.sid, toEntity(p)); });
   net.on('player:leave', ({ sid }) => { if (place !== 'room') stage.remove(sid); });
   net.on('player:rename', ({ sid, nickname }) => {
@@ -341,13 +451,12 @@ function bindSocket() {
   net.on('radio', (snap) => radio.apply(snap, snap.kind));
   net.on('wish:reaction', ({ kind, text }) => toast(`누군가 내 소원 “${text.slice(0, 20)}${text.length > 20 ? '…' : ''}”에 ${kind === 'cheer' ? '📣 응원' : '🤝 공감'}을 보냈어요`, 4500));
   radio.onStarted((cur) => { if (place === 'rooftop') stage.banner(250, 90, `${cur.requestedBy} 님의 신청곡 ♪`, 7000); });
-  net.on('connect_error', (err) => { if (err?.message === 'no_session') toast('게스트 세션이 만료됐어요. 새로고침 후 다시 시작해 주세요.', 6000); });
+
 }
 
-let connectedOnce = false;
 function onReconnect() {
-  if (connectedOnce && place !== 'room') goOutside(place, { silent: true });
-  connectedOnce = true;
+  // 연결이 끊겼다 다시 붙으면 있던 야외 장소에 다시 들어감
+  if (place !== 'room') goOutside(place, { silent: true });
 }
 
 function bindHud() {
@@ -370,20 +479,19 @@ function bindHud() {
   });
 }
 
-// 공원: 걸을 때 발소리, 벤치에 앉아 있을 때 풀벌레·바람 소리
-let lastStep = 0;
+// 공원: 들어가면 풀벌레·바람 소리가 계속(서 있을 때·앉았을 때 모두), 다른 곳에선 멈춤
 function tickSounds() {
   if (!stage) return;
   if (place === 'rooftop') stage.sceneState.radioPlaying = radio.isAudible();
-  if (place !== 'park') { amb.stopNight(); return; }
-  const e = stage.entities.get(mySid);
-  if (!e) return;
-  const p = stage.pos(e);
-  if (p.moving) {
-    amb.stopNight();
-    if (Date.now() - lastStep > 340) { amb.footstep(); lastStep = Date.now(); }
-  } else if (e.seat) amb.startNight();
-  else amb.stopNight();
+  if (place !== 'park') amb.stopNight();
+}
+/** 내 아바타가 실제로 한 발 내딛을 때(걷기 그림이 바뀔 때)마다 바닥에 맞는 발소리. 멈추거나 앉으면 걸음이 없으니 소리도 없음 */
+let lastStepAt = 0;
+function onStep(p) {
+  if (place !== 'park') return;
+  if (performance.now() - lastStepAt < 160) return; // 걷다가 방향을 바꾼 순간 두 발이 겹쳐 들리지 않게
+  lastStepAt = performance.now();
+  amb.footstep(park.surfaceAt(p.x, p.y));
 }
 
 // 디버그/자동 테스트용 읽기 전용 상태
@@ -392,6 +500,9 @@ window.__haru = {
   entities: () => stage ? [...stage.entities.values()].map((e) => ({ id: e.id, nickname: e.nickname, seat: e.seat, me: e.me, bubble: e.bubble?.el.textContent || null, wish: !!e.wish, pos: stage.pos(e), points: e.points, startAt: e.startAt })) : [],
   radio: () => { const a = document.getElementById('radio-audio'); return { src: a.src, paused: a.paused, muted: a.muted, time: a.currentTime, state: radio.getState() }; },
   ambience: () => amb.isNightOn(),
+  steps: () => amb.stepLog(),
+  roomMusic: () => roomMusic.state(),
+  roomMusicSkip: () => roomMusic._skipToEnd(),
   get star() { return stage?.star; },
   koDate,
 };

@@ -4,11 +4,11 @@ import cookieParser from 'cookie-parser';
 import { config, PATHS } from './config.js';
 import { initDb } from './db.js';
 import { initStorage } from './storage.js';
-import { createGuest, setGuestCookie, userFromToken, COOKIE, requireAdmin, wrap, cleanNickname, randomNickname, renameUser, requireUser } from './auth.js';
+import { createGuest, setGuestCookie, clearSessionCookie, userFromToken, COOKIE, requireAdmin, wrap, cleanNickname, randomNickname, renameUser, requireUser, registerAccount, loginAccount, endSession, checkPassword, accountKey } from './auth.js';
 import { diaryRouter, SAMPLE_VIDEOS } from './diary.js';
 import { memoryRouter } from './memory.js';
 import { wishRouter } from './wishes.js';
-import { setupRealtime, counts, fireStar, getRadio, renameLive } from './realtime.js';
+import { setupRealtime, counts, onlineCount, fireStar, getRadio, renameLive, dropSessionSockets } from './realtime.js';
 import { TRACKS } from './tracks.js';
 import { loadLibrary, addedTracks, getTrack } from './library.js';
 import { compose, getDraft, storageKey } from './compose.js';
@@ -29,6 +29,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// 개인 기록이 담긴 API 응답은 브라우저·중간 캐시에 남기지 않음 (로그아웃 후 뒤로가기로 다시 보이지 않게)
+app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+
 // ── 게스트 입장 ──
 app.get('/api/me', wrap(async (req, res) => {
   res.json({ user: await userFromToken(req.cookies[COOKIE]) });
@@ -41,7 +44,10 @@ app.get('/api/nickname/suggest', (req, res) => res.json({ nickname: randomNickna
 app.patch('/api/me', express.json(), requireUser, wrap(async (req, res) => {
   const { nickname, error } = cleanNickname(req.body?.nickname);
   if (error) return res.status(400).json({ error: 'bad_nickname', message: error });
-  await renameUser(req.user.id, nickname);
+  try { await renameUser(req.user.id, nickname); } catch (e) {
+    if (e.code === 'taken') return res.status(409).json({ error: 'taken', message: e.message });
+    throw e;
+  }
   renameLive(req.user.id, nickname); // 접속 중인 소켓과 옥상·공원 아바타 이름표에도 반영
   res.json({ user: { ...req.user, nickname } });
 }));
@@ -60,7 +66,51 @@ app.post('/api/guest', express.json(), wrap(async (req, res) => {
   res.json({ user, created: true });
 }));
 
-app.get('/api/places', (req, res) => res.json({ counts: counts() }));
+// ── 정식 계정: 게스트 → 계정 전환, 로그인, 로그아웃 ──
+app.post('/api/account/register', express.json(), requireUser, wrap(async (req, res) => {
+  if (req.user.registered) return res.status(400).json({ error: 'already', message: '이미 정식 계정이에요.' });
+  const { nickname, error } = cleanNickname(req.body?.nickname);
+  if (error) return res.status(400).json({ error: 'bad_nickname', message: error });
+  const pwError = checkPassword(req.body?.password, req.body?.passwordConfirm);
+  if (pwError) return res.status(400).json({ error: 'bad_password', message: pwError });
+  try { await registerAccount(req.user.id, nickname, String(req.body.password)); } catch (e) {
+    if (e.code === 'taken') return res.status(409).json({ error: 'taken', message: e.message });
+    if (e.code === 'already') return res.status(400).json({ error: 'already', message: e.message });
+    throw e;
+  }
+  renameLive(req.user.id, nickname);
+  res.json({ user: { ...req.user, nickname, registered: true } });
+}));
+
+// 비밀번호 대입 방지: 같은 IP 또는 같은 닉네임으로 15분에 10번 틀리면 잠시 막음
+const loginFails = new Map(); // key → [실패 시각]
+const recentFails = (key) => (loginFails.get(key) || []).filter((t) => Date.now() - t < 15 * 60_000);
+app.post('/api/account/login', express.json(), wrap(async (req, res) => {
+  const nick = String(req.body?.nickname ?? '').slice(0, 40), pw = String(req.body?.password ?? '').slice(0, 200);
+  if (!nick.trim() || !pw) return res.status(400).json({ error: 'missing', message: '닉네임과 비밀번호를 모두 입력해 주세요.' });
+  const keys = [`ip:${req.ip}`, `n:${accountKey(nick)}`];
+  if (keys.some((k) => recentFails(k).length >= 10)) return res.status(429).json({ error: 'rate', message: '로그인 시도가 너무 많아요. 15분 뒤에 다시 해 주세요.' });
+  const r = await loginAccount(nick, pw);
+  if (!r) {
+    keys.forEach((k) => loginFails.set(k, [...recentFails(k), Date.now()]));
+    return res.status(401).json({ error: 'bad_login', message: '닉네임 또는 비밀번호가 맞지 않아요.' });
+  }
+  keys.forEach((k) => loginFails.delete(k));
+  const prev = req.cookies[COOKIE];
+  if (prev) dropSessionSockets(prev); // 이 브라우저에서 쓰던 이전 세션의 실시간 연결을 끊음
+  setGuestCookie(res, r.token);
+  res.json({ user: r.user });
+}));
+
+app.post('/api/account/logout', wrap(async (req, res) => {
+  const token = req.cookies[COOKIE];
+  await endSession(token);
+  if (token) dropSessionSockets(token);
+  clearSessionCookie(res);
+  res.json({ ok: true });
+}));
+
+app.get('/api/places', (req, res) => res.json({ counts: counts(), online: onlineCount() }));
 // 작곡하기는 AI 키가 있어 실제로 쓸 수 있을 때만 공개
 app.get('/api/radio/tracks', (req, res) => res.json({ tracks: TRACKS, added: addedTracks(), features: { compose: !!config.openrouter.apiKey } }));
 
