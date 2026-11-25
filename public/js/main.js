@@ -4,7 +4,7 @@ import { Stage } from './stage.js';
 import { PLACES, routeTo, pathDuration } from './shared/places.js';
 import { room } from './scenes/room.js';
 import { rooftop } from './scenes/rooftop.js';
-import { park } from './scenes/park.js';
+import { park, noteSlots } from './scenes/park.js';
 import { drawAvatar } from './render/pixel.js';
 import { toast, closeAllModals, openModal } from './ui/modal.js';
 import { openDiary, forgetEntry } from './ui/diary.js';
@@ -353,7 +353,7 @@ async function goOutside(placeId, { silent = false } = {}) {
 async function refreshTree() {
   try {
     const { wishes } = await api('/api/wishes/tree');
-    if (place === 'park') stage.renderBackground({ treeCount: wishes.length });
+    if (place === 'park') stage.renderBackground({ treeNotes: noteSlots(wishes) });
   } catch { /* */ }
 }
 
@@ -396,7 +396,7 @@ function onOutdoorHotspot(id) {
   if (id === 'exit') return walkHome();
   newIntent();
   if (id === 'radio') { net.emit('move', PLACES.rooftop.targets.radio); openRadio({ getState: radio.getState, myUserId: user.id }); }
-  if (id === 'tree') { net.emit('move', PLACES.park.targets.tree); openTree({ onPosted: (n) => place === 'park' && stage.renderBackground({ treeCount: n }) }); }
+  if (id === 'tree') { net.emit('move', PLACES.park.targets.tree); openTree({ onPosted: () => refreshTree() }); }
 }
 
 // ───────────── 별똥별 ─────────────

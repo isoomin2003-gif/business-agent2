@@ -1,4 +1,27 @@
 import { rect, stars, glow, vgrad, bench, rng, disc } from '../render/pixel.js';
+import { TREE_NOTES } from '../shared/limits.js';
+
+// 소원 쪽지가 달리는 25개 자리 (나뭇잎 위, 서로 겹치지 않게 고정). 26번째 쪽지는 가장 오래된 쪽지 자리에 달림
+export const NOTE_SLOTS = (() => {
+  const r = rng(91), out = [];
+  for (let tries = 0; out.length < TREE_NOTES && tries < 5000; tries++) {
+    const x = 48 + Math.floor(r() * 66), y = 44 + Math.floor(r() * 50);
+    // 나뭇잎 덩어리 안쪽만 (가운데 줄기 윗부분 포함)
+    const inLeaves = [[80, 52, 34], [56, 72, 24], [104, 70, 26], [80, 80, 30], [66, 46, 18], [96, 44, 20]].some(([cx, cy, rr]) => Math.hypot(x - cx, y - cy) < rr - 6);
+    if (inLeaves && out.every((p) => Math.abs(p.x - x) > 5 || Math.abs(p.y - y) > 9)) out.push({ x, y });
+  }
+  return out;
+})();
+/** 나무에 보일 소원들(최신순, treeSeq 포함) → 쪽지 자리. 기본 자리 = (건 순서-1) % 25, 이미 찼으면 다음 빈자리 */
+export function noteSlots(wishes) {
+  const used = new Set(), out = [];
+  for (const w of wishes.slice(0, TREE_NOTES)) {
+    let slot = ((Number(w.treeSeq) || 1) - 1) % TREE_NOTES;
+    while (used.has(slot)) slot = (slot + 1) % TREE_NOTES;
+    used.add(slot); out.push({ slot, color: (Number(w.treeSeq) || 0) % 5 });
+  }
+  return out;
+}
 
 export const park = {
   id: 'park',
@@ -29,13 +52,12 @@ export const park = {
     for (const [x, y, rr] of leaves) disc(c, x, y, rr, '#1f5a3a');
     for (const [x, y, rr] of leaves) disc(c, x - 3, y - 4, Math.round(rr * 0.7), '#2b7148');
     for (const [x, y, rr] of leaves) disc(c, x - 6, y - 8, Math.round(rr * 0.3), '#3a8a58');
-    // 걸린 소원 종이 (공개 소원 수에 따라)
-    const tags = Math.min(ctx?.treeCount ?? 0, 18);
-    const tr = rng(77);
+    // 걸린 소원 쪽지: 아직 7일이 지나지 않은 최근 25개까지 (자리는 noteSlots로 정해짐)
     const colors = ['#ffcf6e', '#ff9fc0', '#9fe0ff', '#c4ffb0', '#f6ecd6'];
-    for (let i = 0; i < tags; i++) {
-      const x = 46 + Math.floor(tr() * 70), y = 46 + Math.floor(tr() * 46);
-      rect(c, x, y - 3, 1, 3, '#d8d0b0'); rect(c, x - 1, y, 3, 6, colors[i % colors.length]);
+    const notes = ctx?.treeNotes || Array.from({ length: Math.min(ctx?.treeCount ?? 0, TREE_NOTES) }, (_, i) => ({ slot: i, color: i % 5 }));
+    for (const n of notes) {
+      const p = NOTE_SLOTS[n.slot]; if (!p) continue;
+      rect(c, p.x, p.y - 3, 1, 3, '#d8d0b0'); rect(c, p.x - 1, p.y, 3, 6, colors[n.color]); rect(c, p.x - 1, p.y + 5, 3, 1, 'rgba(0,0,0,.25)');
     }
     // 입구
     rect(c, 300, 128, 4, 36, '#2a2f2c'); rect(c, 316, 128, 4, 36, '#2a2f2c'); rect(c, 298, 124, 24, 4, '#3a403c');

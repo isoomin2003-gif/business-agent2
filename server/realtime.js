@@ -7,8 +7,7 @@ import { discover } from './discover.js';
 import { getTrack, addedIds, registerTrack, licenseLabel } from './library.js';
 import { isAdminKey } from './auth.js';
 import { config } from './config.js';
-import { getDraft, draftTrack, storageKey } from './compose.js';
-import { getStorage } from './storage.js';
+import { getSong, songTrack } from './compose.js';
 
 export const CHAT_MAX = 50;
 const segmenter = new Intl.Segmenter('ko', { granularity: 'grapheme' });
@@ -298,12 +297,15 @@ export function setupRealtime(server) {
     socket.on('radio:request', async (data, cb) => {
       if (socket.data.place !== 'rooftop') return cb?.({ ok: false, message: '옥상 라디오에서만 신청할 수 있어요.' });
       const trackId = String(data?.trackId ?? '');
+      // 한 사람당 한 번에 한 곡: 내 신청곡이 대기·재생 중이면 어떤 곡이든 바로 거절 (추천곡·AI 작곡곡·기본 선곡표 모두)
+      if (radio.hasActiveRequest(user)) return cb?.(radio.request(user, trackId));
       if (!getTrack(trackId) && trackId.startsWith('ai:')) {
-        // AI 작곡곡: 만든 사람만 신청 가능. 신청할 때 저장소에 올리고 라디오 목록에 추가
-        const d = getDraft(trackId, user.id);
-        if (!d) return cb?.({ ok: false, message: '내가 만든 곡만 신청할 수 있어요. 미리 듣기가 끝난 지 오래되었다면 다시 만들어 주세요.' });
+        // AI 작곡곡: 만든 사람만 신청 가능. 음원은 작곡할 때 이미 저장됨 → 라디오 목록에만 추가
+        if (!radio.canRequest(user)) return cb?.(radio.request(user, trackId)); // 한 사람당 한 번에 한 곡 등
+        const d = await getSong(trackId, user.id);
+        if (!d) return cb?.({ ok: false, message: '내가 만든 곡만 신청할 수 있어요.' });
         if (!radio.canRequest(user)) return cb?.(radio.request(user, trackId));
-        try { await registerOnce(draftTrack(d), user.nickname, () => getStorage().put(storageKey(trackId), d.file, 'audio/wav')); } catch (e) { console.error('[radio] compose register failed', e.message); return cb?.({ ok: false, message: '곡을 올리지 못했어요. 잠시 후 다시 시도해 주세요.' }); }
+        try { await registerOnce(songTrack(d), user.nickname); } catch (e) { console.error('[radio] compose register failed', e.message); return cb?.({ ok: false, message: '곡을 등록하지 못했어요. 잠시 후 다시 시도해 주세요.' }); }
       } else if (!getTrack(trackId)) {
         const c = shown.get(trackId);
         if (!c) return cb?.({ ok: false, message: '추천받은 곡만 신청할 수 있어요.' });

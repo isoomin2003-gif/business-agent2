@@ -3,7 +3,8 @@
 //  1) 사용자의 문장만 AI에게 보냄 (닉네임·계정·일기 정보는 보내지 않음)
 //  2) AI는 조성·빠르기·악기·화음·멜로디를 JSON 악보로 씀. 특정 곡을 따라 해 달라는 요청은 거절
 //  3) 서버가 악보를 검사·정리(server/synth.js)하고 30초~1분 길이로 펼쳐 8비트풍 WAV로 합성 — 녹음·기존 곡·샘플 음원은 쓰지 않음
-//  4) 결과는 만든 사람만 미리 들을 수 있는 임시 곡(1시간 보관). '옥상 라디오에 신청'을 누르면 저장소에 올리고 라디오 목록에 추가
+//  4) 완성된 곡은 바로 저장소(음원)와 compositions 표(곡 정보)에 사용자별로 저장 → '내가 만든 노래'에서 다시 듣기·신청
+//     음원은 만든 사람만 열 수 있고, 라디오에 신청한 곡만 모두가 들을 수 있음
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,9 +12,10 @@ import path from 'node:path';
 import { config } from './config.js';
 import { normalizeScore, render, toWav, plan, SAMPLE_RATE, LEADS, SCALES } from './synth.js';
 
-const DRAFT_DIR = path.join(os.tmpdir(), 'haru-compose');
-const DRAFT_TTL = 60 * 60_000;
-const drafts = new Map(); // id → { id, owner, file, score, durationMs, createdAt }
+import { getDb, nowIso } from './db.js';
+import { getStorage } from './storage.js';
+
+const TMP_DIR = path.join(os.tmpdir(), 'haru-compose');
 
 const LEAD_KO = { square: '사각파', pulse: '얇은 사각파', triangle: '삼각파', sine: '사인파', musicbox: '오르골', pluck: '뜯는 현' };
 const SCALE_KO = { major: '장조', minor: '단조', dorian: '도리안', pentatonic: '5음 장음계', minor_pentatonic: '5음 단음계' };
@@ -55,19 +57,23 @@ async function askScore(text) {
   } finally { clearTimeout(timer); }
 }
 
-function cleanup() {
-  const now = Date.now();
-  for (const [id, d] of drafts) if (now - d.createdAt > DRAFT_TTL) { drafts.delete(id); fs.rm(d.file, { force: true }, () => {}); }
-}
-
-/**
- * 문장 → 새 곡(임시). { status: 'ok', draft } | { status: 'refused'|'no_key'|'api_error'|'bad_score'|'bad_text', message? }
- */
-export async function compose(rawText, ownerId) {
+/** AI를 부르기 전에 바로 걸러낼 수 있는 요청 (작곡 횟수에 넣지 않음) */
+export function precheck(rawText) {
   const text = brief(rawText);
   if (!text) return { status: 'bad_text', message: '문장이나 단어를 적어 주세요.' };
   if ([...text].length > 60) return { status: 'bad_text', message: '60자 이내로 적어 주세요.' };
   if (COPY_RE.test(text)) return { status: 'refused', message: REFUSE_MESSAGE };
+  return null;
+}
+
+/**
+ * 문장 → 새 곡. 완성되면 바로 '내가 만든 노래'에 저장.
+ * { status: 'ok', song } | { status: 'refused'|'no_key'|'api_error'|'bad_score'|'bad_text'|'storage_error', message? }
+ */
+export async function compose(rawText, ownerId) {
+  const pre = precheck(rawText);
+  if (pre) return pre;
+  const text = brief(rawText);
   // AI가 형식에 맞지 않는 악보를 쓰면 한 번 더 요청
   let score = null, last = null;
   for (let i = 0; i < 2 && !score; i++) {
@@ -78,41 +84,58 @@ export async function compose(rawText, ownerId) {
   }
   if (!score) return { status: last?.status || 'api_error' };
   const samples = render(score);
-  const wav = toWav(samples);
-  cleanup();
-  fs.mkdirSync(DRAFT_DIR, { recursive: true });
   const id = crypto.randomBytes(9).toString('base64url');
-  const file = path.join(DRAFT_DIR, `${id}.wav`);
-  await fs.promises.writeFile(file, wav);
-  const durationMs = Math.round((samples.length / SAMPLE_RATE) * 1000);
-  const draft = { id, owner: ownerId, file, score, durationMs, createdAt: Date.now(), text };
-  drafts.set(id, draft);
-  return { status: 'ok', draft: publicDraft(draft) };
+  const key = `compositions/${ownerId}/${id}.wav`;
+  fs.mkdirSync(TMP_DIR, { recursive: true });
+  const file = path.join(TMP_DIR, `${id}.wav`);
+  try {
+    await fs.promises.writeFile(file, toWav(samples));
+    await getStorage().put(key, file, 'audio/wav');
+  } catch (e) {
+    console.error('[compose] storage failed', e.message);
+    return { status: 'storage_error' };
+  } finally { fs.rm(file, { force: true }, () => {}); }
+  const row = {
+    id, user_id: ownerId, prompt: text, title: score.title || null, mood: score.mood || null, bpm: score.bpm, music_key: score.key, scale: score.scale, lead: score.lead,
+    duration_ms: Math.round((samples.length / SAMPLE_RATE) * 1000), storage_key: key, created_at: nowIso(),
+  };
+  await getDb().run(`INSERT INTO compositions (id, user_id, prompt, title, mood, bpm, music_key, scale, lead, duration_ms, storage_key, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, Object.values(row));
+  return { status: 'ok', song: publicSong(row) };
 }
 
-export function publicDraft(d) {
-  const s = d.score;
+/** 화면용 곡 정보 (만든 사람에게만 보내므로 입력한 문장 포함). 제목이 없으면 문장을 제목처럼 */
+export function publicSong(r) {
   return {
-    id: `ai:${d.id}`, title: s.title, mood: s.mood, durationSec: Math.round(d.durationMs / 100) / 10, bpm: s.bpm,
-    key: `${s.key} ${SCALE_KO[s.scale]}`, lead: LEAD_KO[s.lead], sections: plan(s).order.join('·'), previewUrl: `/api/compose/${d.id}/audio`,
+    id: `ai:${r.id}`, title: r.title || r.prompt, prompt: r.prompt, mood: r.mood || '', durationSec: Math.round(Number(r.duration_ms) / 100) / 10,
+    bpm: Number(r.bpm), key: `${r.music_key} ${SCALE_KO[r.scale] || ''}`.trim(), lead: LEAD_KO[r.lead] || '', createdAt: r.created_at,
+    previewUrl: `/api/compose/${r.id}/audio`,
   };
 }
 
-/** 만든 사람만 접근 가능한 임시 곡 */
-export function getDraft(id, ownerId) {
-  const d = drafts.get(String(id).replace(/^ai:/, ''));
-  return d && d.owner === ownerId && fs.existsSync(d.file) ? d : null;
+/** 내가 만든 노래 (최신순) */
+export async function mySongs(ownerId, limit = 100) {
+  const rows = await getDb().all('SELECT * FROM compositions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?', [ownerId, limit]);
+  return rows.map(publicSong);
 }
 
-/** 라디오 목록에 등록할 곡 정보 */
-export function draftTrack(d) {
+/** 만든 사람만 접근 가능 */
+export async function getSong(id, ownerId) {
+  const r = await getDb().get('SELECT * FROM compositions WHERE id = ?', [String(id).replace(/^ai:/, '')]);
+  return r && r.user_id === ownerId ? r : null;
+}
+/** 라디오에 등록된 AI 작곡곡의 음원 위치 (누구나 들을 수 있는 곡에만 씀) */
+export async function songStorageKey(id) {
+  return (await getDb().get('SELECT storage_key FROM compositions WHERE id = ?', [String(id).replace(/^ai:/, '')]))?.storage_key || null;
+}
+
+/** 라디오 목록에 등록할 곡 정보 (입력한 문장은 공개하지 않음) */
+export function songTrack(r) {
   return {
-    id: `ai:${d.id}`, kind: 'generated', source: 'haru-ai', title: d.score.title, artist: 'AI 작곡',
-    audioUrl: `/api/radio/audio/ai:${d.id}`, sourceUrl: '', license: 'generated', licenseVersion: '', licenseUrl: '',
-    attribution: `${d.score.mood ? `${d.score.mood} · ` : ''}${d.score.bpm} BPM · ${d.score.key} ${SCALE_KO[d.score.scale]} · ${LEAD_KO[d.score.lead]}`,
-    durationMs: d.durationMs, genres: [], tags: [d.score.lead, d.score.scale],
+    id: `ai:${r.id}`, kind: 'generated', source: 'haru-ai', title: r.title || '이름 없는 곡', artist: 'AI 작곡',
+    audioUrl: `/api/radio/audio/ai:${r.id}`, sourceUrl: '', license: 'generated', licenseVersion: '', licenseUrl: '',
+    attribution: `${r.mood ? `${r.mood} · ` : ''}${r.bpm} BPM · ${r.music_key} ${SCALE_KO[r.scale]} · ${LEAD_KO[r.lead]}`,
+    durationMs: Number(r.duration_ms), genres: [], tags: [r.lead, r.scale],
   };
 }
-
-export const storageKey = (trackId) => `radio/${String(trackId).replace(':', '-')}.wav`;
-export const _test = { drafts, LEADS, SCALES };
+export const _test = { LEADS, SCALES };

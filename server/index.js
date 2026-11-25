@@ -11,7 +11,8 @@ import { wishRouter } from './wishes.js';
 import { setupRealtime, counts, onlineCount, fireStar, getRadio, renameLive, dropSessionSockets } from './realtime.js';
 import { TRACKS } from './tracks.js';
 import { loadLibrary, addedTracks, getTrack } from './library.js';
-import { compose, getDraft, storageKey } from './compose.js';
+import { compose, precheck, mySongs, getSong, songStorageKey } from './compose.js';
+import { COMPOSE_LIMIT } from '../public/js/shared/limits.js';
 import { OUTDOOR } from '../public/js/shared/places.js';
 
 const db = await initDb();
@@ -115,27 +116,45 @@ app.get('/api/places', (req, res) => res.json({ counts: counts(), online: online
 app.get('/api/radio/tracks', (req, res) => res.json({ tracks: TRACKS, added: addedTracks(), features: { compose: !!config.openrouter.apiKey } }));
 
 // ── 오늘의 단어로 작곡하기 ──
-const composeTimes = new Map(); // userId → 최근 요청 시각들 (10분에 5곡까지)
-app.post('/api/compose', express.json(), requireUser, wrap(async (req, res) => {
+// 횟수 제한: 한 사람당 10분에 최대 5곡 (AI를 실제로 부르는 요청만 셈. 다시 듣기·신청은 세지 않음)
+const composeTimes = new Map(); // userId → 최근 요청 시각들
+const WINDOW_MS = COMPOSE_LIMIT.windowMin * 60_000;
+function composeQuota(userId) {
   const now = Date.now();
-  const times = (composeTimes.get(req.user.id) || []).filter((t) => now - t < 10 * 60_000);
-  if (times.length >= 5) return res.status(429).json({ status: 'rate', message: '곡은 10분에 다섯 곡까지 만들 수 있어요. 잠시 후 다시 해 주세요.' });
-  times.push(now); composeTimes.set(req.user.id, times);
+  const times = (composeTimes.get(userId) || []).filter((t) => now - t < WINDOW_MS);
+  composeTimes.set(userId, times);
+  const retryAfterSec = times.length >= COMPOSE_LIMIT.max ? Math.ceil((times[0] + WINDOW_MS - now) / 1000) : 0;
+  return { max: COMPOSE_LIMIT.max, windowMin: COMPOSE_LIMIT.windowMin, used: times.length, retryAfterSec };
+}
+const retryText = (sec) => `약 ${Math.max(1, Math.ceil(sec / 60))}분 후에 다시 작곡할 수 있어요.`;
+
+app.post('/api/compose', express.json(), requireUser, wrap(async (req, res) => {
+  const pre = precheck(req.body?.text);
+  if (pre) return res.json(pre);
+  const q = composeQuota(req.user.id);
+  if (q.retryAfterSec) return res.status(429).json({ status: 'rate', message: retryText(q.retryAfterSec), limit: q });
+  composeTimes.get(req.user.id).push(Date.now());
   const r = await compose(req.body?.text, req.user.id); // 사용자의 문장만 AI에게 보냄
-  res.json(r);
+  res.json({ ...r, limit: composeQuota(req.user.id) });
 }));
-// 미리 듣기: 만든 사람만
-app.get('/api/compose/:id/audio', requireUser, (req, res) => {
-  const d = getDraft(req.params.id, req.user.id);
-  if (!d) return res.status(404).json({ error: 'not_found' });
+// 내가 만든 노래 목록 + 지금 남은 작곡 횟수
+app.get('/api/compose/mine', requireUser, wrap(async (req, res) => {
+  const q = composeQuota(req.user.id);
+  res.json({ songs: await mySongs(req.user.id), limit: { ...q, message: q.retryAfterSec ? retryText(q.retryAfterSec) : '' } });
+}));
+// 다시 듣기·미리 듣기: 만든 사람만 (작곡 횟수 차감 없음)
+app.get('/api/compose/:id/audio', requireUser, wrap(async (req, res) => {
+  const r = await getSong(req.params.id, req.user.id);
+  if (!r) return res.status(404).json({ error: 'not_found' });
   res.set('Cache-Control', 'private, no-store');
-  res.type('audio/wav').sendFile(d.file, { acceptRanges: true });
-});
+  await storage.serve(res, r.storage_key, 'audio/wav');
+}));
 // 신청되어 라디오에 올라간 AI 작곡곡: 누구나 (저장소 주소는 서버가 그때그때 만듦)
 app.get('/api/radio/audio/:id', wrap(async (req, res) => {
   const t = getTrack(req.params.id);
-  if (!t || t.kind !== 'generated') return res.status(404).json({ error: 'not_found' });
-  await storage.serve(res, storageKey(t.id), 'audio/wav');
+  const key = t?.kind === 'generated' ? await songStorageKey(t.id) : null;
+  if (!key) return res.status(404).json({ error: 'not_found' });
+  await storage.serve(res, key, 'audio/wav');
 }));
 app.get('/api/samples', (req, res) => res.json({ samples: Object.entries(SAMPLE_VIDEOS).map(([id, s]) => ({ id, title: s.title, poster: s.poster })) }));
 // 어떤 저장 방식이 쓰이는지(값이나 주소는 노출하지 않음)

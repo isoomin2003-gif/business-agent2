@@ -8,6 +8,7 @@ import { rect, disc, glow, rng, stars } from '../render/pixel.js';
 import { room } from '../scenes/room.js';
 import { rooftop } from '../scenes/rooftop.js';
 import { park } from '../scenes/park.js';
+import { composeLimitText, WISH_TTL_DAYS, TREE_NOTES } from '../shared/limits.js';
 
 const SCENES = { room: [room, { bookCount: 7 }], rooftop: [rooftop, {}], park: [park, { treeCount: 8 }] };
 const rendered = {};
@@ -49,7 +50,7 @@ const PAGES = [
     lead: '문을 누르고 옥상을 고르면 와요. 다른 사람과 같은 음악을 들으며 쉬어요.',
     items: [
       [() => crop('rooftop', { x: 36, y: 98, w: 96, h: 42 }), '벤치', '빈자리를 클릭하면 가서 앉아요'],
-      [() => crop('rooftop', { x: 228, y: 88, w: 44, h: 56 }), '라디오', '지금 나오는 곡 · 곡 신청 · 새 노래 추천 · 작곡'],
+      [() => crop('rooftop', { x: 228, y: 88, w: 44, h: 56 }), '라디오', `지금 나오는 곡 · 곡 신청(한 사람당 한 번에 한 곡) · 새 노래 추천 · 작곡<small>${composeLimitText()}<br>완성된 곡은 ‘내가 만든 노래’에 자동으로 저장돼요.</small>`],
       [() => svgPic('chat'), '말하기', '화면 아래 입력창에 한마디 (50자까지)'],
       [() => crop('rooftop', { x: 270, y: 84, w: 50, h: 64 }), '계단실 문', '내 방으로 돌아가기'],
     ],
@@ -59,7 +60,7 @@ const PAGES = [
     lead: '조용한 밤 산책길이에요. 걸으면 발소리, 가만히 있으면 풀벌레와 바람 소리가 들려요.',
     items: [
       [() => crop('park', { x: 146, y: 98, w: 60, h: 40 }, 80), '벤치', '빈자리를 클릭하면 앉아서 쉬어요'],
-      [() => crop('park', { x: 36, y: 24, w: 92, h: 132 }, 80), '소원 나무', '소원 읽기 · 걸기 · 공감과 응원'],
+      [() => crop('park', { x: 36, y: 24, w: 92, h: 132 }, 80), '소원 나무', `소원 쓰기 · 소원 모아보기 · 공감과 응원<small>소원은 ${WISH_TTL_DAYS}일 동안 공원에 머물러요. 나무에는 최근 ${TREE_NOTES}개까지 걸려요.</small>`],
       [() => svgPic('star'), '별똥별', '지나가면 ‘소원 빌기’ 버튼이 잠깐 떠요'],
       [() => crop('park', { x: 292, y: 104, w: 30, h: 64 }, 128), '입구 표지판', '내 방으로 돌아가기'],
     ],

@@ -373,3 +373,30 @@ textarea#d-text { font-size: 18px; line-height: 1.8; }
 .modal.shop-modal { width: min(380px, calc(100vw - 24px)); text-align: center; }
 .shop-stall svg { width: 112px; height: 112px; image-rendering: pixelated; }
 .shop-msg { font-family: var(--font-read); font-size: 16px; line-height: 1.6; }
+
+/* 소원 나무: 쓰기 / 모아보기 선택 */
+.tree-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 12px; }
+.paper-card { background: #efe3c8; color: #3a2a20; border-color: #6b4f3a; box-shadow: 0 3px 0 #6b4f3a; }
+.paper-card span { color: #6b5545; }
+.paper-card.on { background: #f8e2b0; outline: 2px solid #c98a3c; }
+.fine-note { font-size: 12px; color: #7b6656; margin: -2px 0 2px; }
+.wish.expired { opacity: .6; }
+@media (max-width: 520px) { .tree-choices { grid-template-columns: 1fr; } }
+
+/* 라디오 신청 결과 안내: 누른 버튼 바로 아래 */
+.req-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.req-msg { margin: 0; max-width: 220px; font-size: 13px; line-height: 1.4; text-align: right; }
+.req-msg.err { color: var(--danger); }
+.req-msg.ok { color: var(--green); }
+
+/* AI 작곡: 횟수 안내 · 내가 만든 노래 */
+.cp-limit { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+.cp-limit.over { color: var(--danger); }
+.my-songs-h { margin: 16px 0 8px; font-size: 16px; }
+.my-songs { display: flex; flex-direction: column; gap: 8px; }
+.song { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; background: var(--panel-2); border-radius: 6px; padding: 10px 12px; }
+.song .t { font-family: var(--font-pixel); font-size: 12px; font-weight: 700; color: var(--pink); }
+.song .muted { font-size: 13px; }
+.song-btns { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.empty-songs { margin: 0; }
+.m-items small { display: block; font-size: 13px; color: #7b5a4a; margin-top: 2px; line-height: 1.4; }

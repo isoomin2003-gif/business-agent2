@@ -91,14 +91,32 @@ test('같은 좌석을 동시에 누르면 한 명만 앉는다 / 방 인원은 
   sa.close(); sb.close();
 });
 
-test('라디오: 등록된 곡만, 한 사람당 대기 1곡, 채팅 50자 제한', async () => {
+test('라디오: 등록된 곡만, 한 사람당 한 번에 한 곡(대기·재생 중), 끝나면 다시 신청, 채팅 50자 제한', async () => {
   const a = await guest();
   const s = await sock(a.cookie);
   assert.equal((await emit(s, 'radio:request', { trackId: 'lofi-again' })).ok, false); // 옥상 밖
   await emit(s, 'join', { place: 'rooftop' });
   assert.equal((await emit(s, 'radio:request', { trackId: 'https://example.com/a.mp3' })).ok, false);
-  assert.equal((await emit(s, 'radio:request', { trackId: 'lofi-again' })).ok, true);
-  assert.equal((await emit(s, 'radio:request', { trackId: 'november-snow' })).ok, false);
+  // 연속으로 눌러도 한 건만
+  const burst = await Promise.all([1, 2, 3].map(() => emit(s, 'radio:request', { trackId: 'lofi-again' })));
+  assert.equal(burst.filter((r) => r.ok).length, 1);
+  const again = await emit(s, 'radio:request', { trackId: 'november-snow' });
+  assert.equal(again.ok, false);
+  assert.equal(again.message, '이미 곡을 신청하셨어요. 신청한 곡이 끝날 때까지 기다려 주세요!');
+  // 내 곡이 재생 중일 때도 신청 불가, 끝나면 다시 가능
+  const ff = async () => (await (await fetch(`${BASE}/api/admin/radio/fast-forward`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': 'k' }, body: JSON.stringify({ secondsLeft: 3 }) })).json()).radio;
+  let playingMine = false;
+  for (let i = 0; i < 6 && !playingMine; i++) {
+    await ff(); await new Promise((r) => setTimeout(r, 3500));
+    const snap = await ff();
+    playingMine = snap.current.trackId === 'lofi-again' && snap.current.requestedBy === a.user.nickname;
+    if (playingMine) {
+      assert.equal((await emit(s, 'radio:request', { trackId: 'november-snow' })).code, 'mine');
+      await new Promise((r) => setTimeout(r, 3500));
+    }
+  }
+  assert.ok(playingMine);
+  assert.equal((await emit(s, 'radio:request', { trackId: 'november-snow' })).ok, true);
   assert.equal((await emit(s, 'chat', { text: '가'.repeat(50) })).ok, true);
   await new Promise((r) => setTimeout(r, 800));
   assert.equal((await emit(s, 'chat', { text: '가'.repeat(51) })).ok, false);

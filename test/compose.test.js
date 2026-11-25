@@ -60,7 +60,7 @@ test('작곡 → 나만 미리 듣기 → 신청 → 라디오 재생 정보', a
 
     const r = await post(ca, '첫눈 오는 골목, 따뜻한 코코아');
     assert.equal(r.status, 'ok');
-    const d = r.draft;
+    const d = r.song;
     assert.ok(d.durationSec >= 30 && d.durationSec <= 60);
     // AI에게는 사용자의 문장만 (닉네임 등 없음)
     const sent = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((x) => /AI 작곡가/.test(x.body.messages[0].content));
@@ -87,6 +87,29 @@ test('작곡 → 나만 미리 듣기 → 신청 → 라디오 재생 정보', a
     assert.ok(!t.attribution.includes('코코아')); // 공개 정보에 사용자가 쓴 문장을 그대로 싣지 않음
     const pub = await fetch(`${BASE}${t.file}`, { headers: { Range: 'bytes=0-99' } });
     assert.equal(pub.status, 206); // 신청 후에는 누구나 재생
+    // 내가 만든 노래: 자동 저장, 입력한 문장·날짜·길이, 만든 사람에게만
+    const mineList = await (await fetch(`${BASE}/api/compose/mine`, { headers: { cookie: ca } })).json();
+    assert.equal(mineList.songs[0].id, d.id);
+    assert.equal(mineList.songs[0].prompt, '첫눈 오는 골목, 따뜻한 코코아');
+    assert.ok(mineList.songs[0].createdAt && mineList.songs[0].durationSec >= 30);
+    assert.equal((await (await fetch(`${BASE}/api/compose/mine`, { headers: { cookie: cb } })).json()).songs.length, 0);
+    // 다른 곡은 내 곡이 끝날 때까지 신청 불가 (AI 작곡곡도 같은 규칙)
+    const r2 = await post(ca, '신나는 옥상 점프');
+    assert.equal(r2.status, 'ok');
+    const blocked = await emit(a, 'radio:request', { trackId: r2.song.id });
+    assert.equal(blocked.code, 'mine');
+    assert.equal(blocked.message, '이미 곡을 신청하셨어요. 신청한 곡이 끝날 때까지 기다려 주세요!');
+    // 작곡 횟수: AI를 부른 요청만 셈 (서버 규칙으로 바로 거른 따라 하기 요청은 제외, AI가 판단해 거절한 요청은 포함)
+    // → AI 거절(1)·엉망(2)·코코아(3)·점프(4) + 1곡 = 5곡, 6번째는 남은 시간 안내
+    assert.equal(r2.limit.used, 4);
+    assert.equal((await post(ca, '잔잔한 밤')).status, 'ok');
+    const over = await fetch(`${BASE}/api/compose`, { method: 'POST', headers: { cookie: ca, 'Content-Type': 'application/json' }, body: JSON.stringify({ text: '하나 더' }) });
+    assert.equal(over.status, 429);
+    assert.match((await over.json()).message, /^약 (9|10)분 후에 다시 작곡할 수 있어요\.$/);
+    // 다시 듣기는 횟수와 상관없이 가능
+    assert.equal((await fetch(`${BASE}${r2.song.previewUrl}`, { headers: { cookie: ca, Range: 'bytes=0-9' } })).status, 206);
+    const lim = (await (await fetch(`${BASE}/api/compose/mine`, { headers: { cookie: ca } })).json());
+    assert.equal(lim.songs.length, 3); assert.equal(lim.limit.used, 5); assert.ok(lim.limit.retryAfterSec > 500);
     // 기본 방송이 끝나면 신청곡으로
     const st = await (await fetch(`${BASE}/api/radio/tracks`)).json();
     assert.ok(st.added.length === 1);
