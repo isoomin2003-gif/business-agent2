@@ -4,14 +4,15 @@ import cookieParser from 'cookie-parser';
 import { config, PATHS } from './config.js';
 import { initDb } from './db.js';
 import { initStorage } from './storage.js';
-import { createGuest, setGuestCookie, clearSessionCookie, userFromToken, COOKIE, requireAdmin, wrap, cleanNickname, randomNickname, renameUser, requireUser, registerAccount, loginAccount, endSession, checkPassword, accountKey } from './auth.js';
+import { createGuest, setGuestCookie, clearSessionCookie, userFromToken, COOKIE, requireAdmin, wrap, cleanNickname, randomNickname, renameUser, requireUser, registerAccount, loginAccount, endSession, checkPassword, accountKey, saveAvatar } from './auth.js';
+import { validAvatar } from '../public/js/shared/avatar.js';
 import { diaryRouter, SAMPLE_VIDEOS } from './diary.js';
 import { memoryRouter } from './memory.js';
 import { wishRouter } from './wishes.js';
 import { chatRouter } from './chat.js';
 import { newsRouter, startNewsScheduler, catchUp } from './news.js';
 import { setNow, resetClock, now as clockNow } from './kst.js';
-import { setupRealtime, counts, onlineCount, fireStar, getRadio, renameLive, dropSessionSockets } from './realtime.js';
+import { setupRealtime, counts, onlineCount, fireStar, getRadio, renameLive, setAvatarLive, dropSessionSockets } from './realtime.js';
 import { TRACKS } from './tracks.js';
 import { loadLibrary, addedTracks, getTrack } from './library.js';
 import { compose, precheck, mySongs, getSong, songStorageKey } from './compose.js';
@@ -54,6 +55,15 @@ app.patch('/api/me', express.json(), requireUser, wrap(async (req, res) => {
   }
   renameLive(req.user.id, nickname); // 접속 중인 소켓과 옥상·공원 아바타 이름표에도 반영
   res.json({ user: { ...req.user, nickname } });
+}));
+
+// 아바타 꾸미기 저장 (머리·맨투맨 색·하의) — 계정에 저장해 다른 브라우저에서도 같은 모습, 옥상·공원에 있으면 바로 반영
+app.put('/api/me/avatar', express.json(), requireUser, wrap(async (req, res) => {
+  const avatar = validAvatar(req.body);
+  if (!avatar) return res.status(400).json({ error: 'bad_avatar', message: '고를 수 없는 모습이에요.' });
+  await saveAvatar(req.user.id, avatar);
+  setAvatarLive(req.user.id, avatar);
+  res.json({ user: { ...req.user, avatar } });
 }));
 
 app.post('/api/guest', express.json(), wrap(async (req, res) => {

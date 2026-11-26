@@ -1,5 +1,6 @@
 // 캔버스 렌더링, 아바타/말풍선, 클릭(터치) 판정을 담당합니다.
-import { drawAvatar, rect, glow, rng } from './render/pixel.js';
+import { rect, glow, rng } from './render/pixel.js';
+import { drawAvatar } from './render/avatar.js';
 import { SCALE, ready } from './render/backdrops.js';
 import { positionAt, snapWalkable } from './shared/places.js';
 import { now } from './net.js';
@@ -10,11 +11,11 @@ const BUBBLE_MS = 5200;
 export const AVATAR_SCALE = 1; // 배경 교체 전과 같은 크기 (장면 높이 180 중 키 18)
 const STAND_H = 18 * AVATAR_SCALE, SIT_H = 15 * AVATAR_SCALE;
 /** 아바타를 발 위치 기준으로 확대해 그림 (픽셀 경계를 캔버스 실제 픽셀에 맞춤) */
-function drawBig(c, x, y, color, opts) {
+function drawBig(c, x, y, avatar, opts) {
   c.save();
   c.translate(Math.round(x * SCALE) / SCALE, Math.round(y * SCALE) / SCALE);
   c.scale(AVATAR_SCALE, AVATAR_SCALE);
-  drawAvatar(c, 0, 0, color, opts);
+  drawAvatar(c, 0, 0, avatar, opts);
   c.restore();
 }
 export { drawBig as drawAvatarScaled };
@@ -228,8 +229,8 @@ export class Stage {
       const seated = !p.moving && e.seat;
       const seatDef = seated ? this.place.seats[e.seat] : null;
       const frame = Math.floor(t / STEP_MS);
-      drawBig(c, p.x, seated ? p.y + 2 : p.y, e.color, {
-        pose: p.moving ? 'walk' : seated ? 'sit' : 'stand', frame, dir: p.dir, back: seatDef?.back, me: e.me,
+      drawBig(c, p.x, seated ? p.y + 2 : p.y, e.avatar, {
+        pose: p.moving ? 'walk' : seated ? 'sit' : 'stand', frame, dir: p.dir, back: seated ? seatDef?.back : !!(p.moving && p.up), me: e.me,
       });
       if (e.me) {
         if (p.moving && frame !== e.stepFrame) this.handlers.step?.(p);

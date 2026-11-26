@@ -10,6 +10,7 @@ import { toast, closeAllModals, openModal } from './ui/modal.js';
 import { openDiary, forgetEntry } from './ui/diary.js';
 import { openDeskChat } from './ui/chat.js';
 import { openNewsstand } from './ui/newsstand.js';
+import { openAvatarMaker, paintMini } from './ui/avatarmaker.js';
 import { openBookshelf } from './ui/bookshelf.js';
 import { openBook } from './ui/book.js';
 import { openPlaces, openRadio, openTree, openStarWish, openWish, openMyWishes } from './ui/outdoor.js';
@@ -40,7 +41,7 @@ function drawLanding() {
   c.setTransform(SCALE, 0, 0, SCALE, 0, 0); c.imageSmoothingEnabled = false;
   room.background(c, { bookCount: user ? bookCount : 0 });
   room.animate(c, 0);
-  drawAvatarScaled(c, PLACES.room.seats.chair.x, PLACES.room.seats.chair.y + 2, 3, { pose: 'sit', back: true });
+  drawAvatarScaled(c, PLACES.room.seats.chair.x, PLACES.room.seats.chair.y + 2, user?.avatar, { pose: 'sit', back: true });
   room.props[0].draw(c);
 }
 backdropsReady.then(() => { if (!$('#landing').hidden) drawLanding(); }); // 배경 그림을 다 받으면 첫 화면 그림도 다시
@@ -101,6 +102,7 @@ function openCreateAccount() {
       $('#start-btn').textContent = '내 방으로 들어가기';
       m.close();
       nickMsg('정식 계정이 되었어요. 지금까지의 기록은 그대로예요.');
+      showAvatarMaker({ first: true }); // 처음 방에 들어가기 전에 내 아바타 만들기
     } catch (err) {
       st.textContent = err.message; st.className = 'status err';
       if (err.data?.error === 'taken') f.nickname.focus();
@@ -139,6 +141,30 @@ async function logout() {
   location.replace('/');
 }
 
+// ───────────── 아바타 꾸미기 (홈) ─────────────
+let maker = null;
+function showAvatarMaker({ first = false } = {}) {
+  maker?.close();
+  $('#landing-main').hidden = true;
+  const done = () => { maker?.close(); maker = null; $('#landing-main').hidden = false; };
+  maker = openAvatarMaker($('#avatar-maker'), {
+    avatar: user?.avatar, first,
+    onSave: async (avatar) => {
+      if (!user) { // 첫 방문: 이 모습으로 바로 시작 (게스트 계정을 만들고 저장)
+        user = (await api('/api/guest', { method: 'POST', body: pendingNick ? { nickname: pendingNick } : {} })).user;
+        await net.reconnect(); paintAccount();
+      }
+      const r = await api('/api/me/avatar', { method: 'PUT', body: avatar });
+      user = { ...user, avatar: r.user.avatar };
+      paintMini($('#av-mini'), user.avatar);
+      done();
+      enterGame(); // 저장하고 내 방으로
+    },
+    onCancel: done,
+  });
+  window.scrollTo(0, 0);
+}
+
 async function boot() {
   drawLanding();
   // 상단 아이콘 버튼: 상점(줄무늬 천막 가판대), 사용 설명서(청록 표지 책)
@@ -151,6 +177,8 @@ async function boot() {
   $('#acct-create').addEventListener('click', openCreateAccount);
   $('#acct-login').addEventListener('click', openLogin);
   $('#acct-logout').addEventListener('click', logout);
+  $('#avatar-btn').addEventListener('click', () => showAvatarMaker());
+  paintMini($('#av-mini'), null);
   // 느린 연결에서도 바로 누를 수 있도록 이전 세션 확인보다 먼저 연결
   $('#start-btn').addEventListener('click', start);
   $('#nick-edit').addEventListener('click', () => {
@@ -163,7 +191,7 @@ async function boot() {
   try {
     const { user: u } = await api('/api/me');
     if (u) {
-      user = user || u; showNick(u.nickname); paintAccount();
+      user = user || u; showNick(u.nickname); paintAccount(); paintMini($('#av-mini'), user.avatar); drawLanding();
       refreshRoomBooks(); // 이미 쓴 기록을 첫 화면 그림의 책장에도 바로
       $('#start-btn').textContent = '내 방으로 들어가기';
       let enter = false;
@@ -263,7 +291,7 @@ async function enterRoom(from = 'door') {
   roomMusic.stop(); // 방에 들어올 때는 늘 조용하게 (직접 켜야 재생)
   stage.setScene(room, PLACES.room, 'room', { bookCount });
   const n = PLACES.room.targets[from] || PLACES.room.spawn;
-  stage.upsert('me', { nickname: user.nickname, color: user.color, me: true, points: [{ x: n.x, y: n.y }], startAt: net.now(), seat: null });
+  stage.upsert('me', { nickname: user.nickname, avatar: user.avatar, me: true, points: [{ x: n.x, y: n.y }], startAt: net.now(), seat: null });
   setHud();
   refreshRoomBooks();
   if (!store.get('firstHintShown')) {
@@ -338,7 +366,7 @@ async function onRoomHotspot(id) {
 
 // ───────────── 야외 (옥상 / 공원) ─────────────
 const toEntity = (p) => ({
-  nickname: p.nickname, color: p.color, me: p.sid === mySid, points: p.points, startAt: p.startAt, seat: p.seat,
+  nickname: p.nickname, avatar: p.avatar, me: p.sid === mySid, points: p.points, startAt: p.startAt, seat: p.seat,
   wish: p.wish ? { wishId: p.wish.wishId, until: localTime(p.wish.until) } : null,
 });
 const localTime = (serverTs) => serverTs - (net.now() - Date.now());
@@ -462,6 +490,7 @@ function bindSocket() {
     e.nickname = nickname;
     e.tag.textContent = e.me ? `${nickname} (나)` : nickname;
   });
+  net.on('player:avatar', ({ sid, avatar }) => { const e = stage.entities.get(sid); if (e) e.avatar = avatar; }); // 다른 사람이 아바타를 바꿈
   net.on('player:move', (m) => { if (place !== 'room' && stage.entities.has(m.sid)) stage.upsert(m.sid, { points: m.points, startAt: m.startAt, seat: m.seat }); });
   net.on('chat', ({ sid, text }) => { if (place === 'rooftop') stage.say(sid, text); });
   net.on('wish:float', ({ sid, wishId, until }) => { const e = stage.entities.get(sid); if (e && place !== 'room') e.wish = { wishId, until: localTime(until) }; });
@@ -515,7 +544,7 @@ function onStep(p) {
 // 디버그/자동 테스트용 읽기 전용 상태
 window.__haru = {
   get place() { return place; }, get mySid() { return mySid; }, get user() { return user; },
-  entities: () => stage ? [...stage.entities.values()].map((e) => ({ id: e.id, nickname: e.nickname, seat: e.seat, me: e.me, bubble: e.bubble?.el.textContent || null, wish: !!e.wish, pos: stage.pos(e), points: e.points, startAt: e.startAt })) : [],
+  entities: () => stage ? [...stage.entities.values()].map((e) => ({ id: e.id, nickname: e.nickname, avatar: e.avatar || null, seat: e.seat, me: e.me, bubble: e.bubble?.el.textContent || null, wish: !!e.wish, pos: stage.pos(e), points: e.points, startAt: e.startAt })) : [],
   radio: () => { const a = document.getElementById('radio-audio'); return { src: a.src, paused: a.paused, muted: a.muted, time: a.currentTime, state: radio.getState() }; },
   ambience: () => amb.isNightOn(),
   steps: () => amb.stepLog(),

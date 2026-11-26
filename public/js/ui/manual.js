@@ -141,8 +141,9 @@ export async function openManual(start = 0) {
     page = (i + PAGES.length) % PAGES.length;
     const p = PAGES[page];
     const el = m.$('.m-page');
+    // 쪽마다 글 양이 달라도 책 크기·버튼 위치는 그대로: 본문(m-scroll)만 안에서 스크롤
     el.innerHTML = `<div class="m-deco" aria-hidden="true"></div><h2 class="m-title">${p.title}</h2><div class="m-rule" aria-hidden="true"><i></i></div>
-      <p class="m-lead">${p.lead}</p><ul class="m-items"></ul>${p.note ? `<p class="m-note">${p.note}</p>` : ''}
+      <div class="m-scroll" tabindex="0" aria-label="${p.title} 설명"><p class="m-lead">${p.lead}</p><ul class="m-items"></ul>${p.note ? `<p class="m-note">${p.note}</p>` : ''}</div>
       <div class="m-foot"><button class="m-arrow" data-prev aria-label="이전 쪽">←</button><span class="m-num">${page + 1} / ${PAGES.length}</span><button class="m-arrow" data-next aria-label="다음 쪽">→</button></div>`;
     const ul = el.querySelector('.m-items');
     for (const [pic, name, text] of p.items) {

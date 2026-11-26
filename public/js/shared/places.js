@@ -210,7 +210,7 @@ export function positionAt(points, startAt, now) {
     const len = Math.hypot(b.x - a.x, b.y - a.y);
     if (remain <= len) {
       const t = len ? remain / len : 1;
-      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, moving: true, dir: b.x < a.x ? -1 : b.x > a.x ? 1 : 0 };
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, moving: true, dir: b.x < a.x ? -1 : b.x > a.x ? 1 : 0, up: a.y - b.y > Math.abs(b.x - a.x) }; // up: 화면 안쪽(위)으로 걸어감 → 뒷모습
     }
     remain -= len;
   }

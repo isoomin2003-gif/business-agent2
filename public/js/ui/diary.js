@@ -1,4 +1,4 @@
-// 책상: 오늘의 다이어리 쓰기/수정 — 사진 또는 영상 하나 + 한 문장
+// 책상: 오늘의 다이어리 쓰기/수정 — 내가 고른 사진 또는 영상 하나 + 한 문장 (샘플 영상 없음: 새 페이지의 첨부 칸은 비어 있음)
 import { api, uploadVideo, localToday, koDate, store, esc } from '../api.js';
 import { openModal, toast } from './modal.js';
 
@@ -19,20 +19,21 @@ export async function openDiary({ onViewInShelf, onSaved } = {}) {
   if (draft.date !== today) Object.assign(draft, { date: today, sentence: store.get(`draft:${today}`, ''), videoId: null, videoUrl: null, mediaType: null, saved: null });
   const touch = matchMedia('(pointer: coarse)').matches;
   const m = openModal({
-    title: '오늘의 한 장', paper: true, label: '다이어리 쓰기',
+    title: '오늘의 한 장', paper: true, label: '다이어리 쓰기', cls: 'diary-modal',
     html: `
-      <div class="stack">
+      <div class="stack diary-form">
         <div class="diary-date">${koDate(today)}</div>
         <div class="video-box" id="d-video"><span>오늘 가장 기억에 남는 순간의 사진이나 영상을 골라 주세요</span></div>
-        <div class="progress" id="d-prog" hidden><i></i></div>
-        <div class="row">
-          <label class="btn btn-small" for="d-file" id="d-file-label">📎 사진 또는 영상 추가</label>
-          <input id="d-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/*" hidden>
-          ${touch ? `<label class="btn btn-small" for="d-cam">📷 직접 촬영</label><input id="d-cam" type="file" accept="video/*" capture="environment" hidden>` : ''}
-          <button class="btn btn-small" id="d-sample-btn">✨ 샘플 영상으로 써보기</button>
-          <button class="btn btn-small" id="d-clear" hidden>✕ 첨부 지우기</button>
+        <div class="progress" id="d-prog" style="visibility:hidden"><i></i></div>
+        <!-- 버튼 글자·개수가 바뀌지 않아 마우스를 올리거나 누르거나 파일을 고른 뒤에도 자리가 그대로 -->
+        <div class="d-attach${touch ? ' with-cam' : ''}">
+          <label class="btn btn-small" for="d-photo" data-pick>🖼 사진</label>
+          <input id="d-photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+          <label class="btn btn-small" for="d-file" data-pick>🎬 동영상</label>
+          <input id="d-file" type="file" accept="video/*" hidden>
+          ${touch ? `<label class="btn btn-small" for="d-cam" data-pick>📷 촬영</label><input id="d-cam" type="file" accept="video/*" capture="environment" hidden>` : ''}
+          <button class="btn btn-small" id="d-clear" disabled>✕ 지우기</button>
         </div>
-        <div class="samples" id="d-samples" hidden></div>
         <label for="d-text"><b>오늘의 한 문장</b> <span class="muted" id="d-count"></span></label>
         <textarea id="d-text" rows="2" maxlength="${MAX}" placeholder="예) 퇴근길 버스에서 본 노을이 오늘 제일 예뻤다."></textarea>
         <div id="d-first" class="notice" hidden>
@@ -56,8 +57,7 @@ export async function openDiary({ onViewInShelf, onSaved } = {}) {
     $('#d-video').innerHTML = !url ? '<span>오늘 가장 기억에 남는 순간의 사진이나 영상을 골라 주세요</span>'
       : type === 'photo' ? `<img src="${esc(url)}" alt="오늘의 사진 미리보기">`
         : `<video src="${esc(url)}#t=0.1" controls playsinline preload="metadata"></video>`;
-    $('#d-clear').hidden = !url;
-    $('#d-file-label').textContent = url ? '📎 다른 사진·영상으로 바꾸기' : '📎 사진 또는 영상 추가';
+    $('#d-clear').disabled = !url; // 숨기지 않고 비활성화만 (버튼 줄이 움직이지 않게)
   };
   /** 저장 전 첨부를 바꾸거나 지울 때, 아직 어느 일기에도 쓰이지 않은 이전 파일은 서버에서 지움 */
   const dropUnsaved = (id) => { if (id && id !== draft.saved?.videoId) api(`/api/videos/${id}`, { method: 'DELETE' }).catch(() => {}); };
@@ -80,7 +80,7 @@ export async function openDiary({ onViewInShelf, onSaved } = {}) {
     if (!isPhoto && !file.type.startsWith('video/')) return setStatus('사진이나 영상 파일만 고를 수 있어요.', 'err');
     if (/heic|heif/i.test(file.type)) return setStatus('HEIC 사진은 아직 열 수 없어요. JPG나 PNG로 골라 주세요.', 'err');
     const prog = $('#d-prog');
-    prog.hidden = false; prog.firstElementChild.style.width = '0%';
+    prog.style.visibility = 'visible'; prog.firstElementChild.style.width = '0%';
     setStatus(isPhoto ? '사진을 올리는 중이에요…' : '영상을 올리는 중이에요…');
     try {
       const r = await uploadVideo(file, (p) => { prog.firstElementChild.style.width = `${Math.round(p * 100)}%`; });
@@ -88,28 +88,19 @@ export async function openDiary({ onViewInShelf, onSaved } = {}) {
       setStatus(`${r.mediaType === 'photo' ? '사진' : '영상'}을 골랐어요. 한 문장을 적고 저장해 주세요.`, 'ok');
     } catch (e) {
       setStatus(`${e.message} 작성 중인 문장은 그대로 남아 있어요.`, 'err');
-    } finally { prog.hidden = true; }
+    } finally { prog.style.visibility = 'hidden'; }
   }
-  $('#d-file').addEventListener('change', (e) => handleFile(e.target));
-  $('#d-cam')?.addEventListener('change', (e) => handleFile(e.target));
-
-  $('#d-sample-btn').addEventListener('click', async () => {
-    const box = $('#d-samples');
-    if (!box.hidden) { box.hidden = true; return; }
-    const { samples } = await api('/api/samples');
-    box.innerHTML = samples.map((s) => `<button class="sample" data-id="${s.id}"><img src="${s.poster}" alt=""><span>${esc(s.title)}</span></button>`).join('');
-    box.hidden = false;
-    box.querySelectorAll('.sample').forEach((b) => b.addEventListener('click', async () => {
-      box.querySelectorAll('.sample').forEach((x) => x.classList.remove('on')); b.classList.add('on');
-      setStatus('샘플 영상을 내 책장용으로 준비하는 중…');
-      try {
-        const r = await api('/api/videos/sample', { method: 'POST', body: { sampleId: b.dataset.id } });
-        setMedia(r);
-        setStatus('샘플 영상을 골랐어요. 이제 직접 한 문장을 적어 저장해 보세요.', 'ok');
-        text.focus();
-      } catch (e) { setStatus(`${e.message} 작성 중인 문장은 그대로예요.`, 'err'); }
-    }));
-  });
+  // 파일 선택 창을 열었다 닫아도(고르기·취소) 작성하던 위치 그대로: 누르기 직전 스크롤을 기억했다가 되돌림
+  let keep = null;
+  const remember = () => { keep = { modal: m.el.scrollTop, page: window.scrollY }; };
+  const restore = () => { if (!m.el.isConnected) { window.removeEventListener('focus', restore); return; } if (!keep) return; const k = keep; requestAnimationFrame(() => { m.el.scrollTop = k.modal; window.scrollTo(window.scrollX, k.page); }); };
+  m.$$('[data-pick]').forEach((l) => { l.addEventListener('pointerdown', remember); l.addEventListener('keydown', remember); });
+  for (const id of ['#d-photo', '#d-file', '#d-cam']) {
+    const input = $(id); if (!input) continue;
+    input.addEventListener('change', (e) => { restore(); handleFile(e.target); });
+    input.addEventListener('cancel', restore); // 선택 취소
+  }
+  window.addEventListener('focus', restore); // 창이 닫힌 뒤 처음 불릴 때 스스로 해제
 
   $('#d-clear').addEventListener('click', () => {
     dropUnsaved(draft.videoId);
@@ -120,7 +111,7 @@ export async function openDiary({ onViewInShelf, onSaved } = {}) {
 
   async function save() {
     const sentence = text.value.trim();
-    if (!draft.videoId) return setStatus('사진이나 영상을 먼저 골라 주세요. (샘플 영상으로도 써볼 수 있어요)', 'err');
+    if (!draft.videoId) return setStatus('사진이나 영상을 먼저 골라 주세요.', 'err');
     if (!sentence) { text.focus(); return setStatus('오늘의 한 문장을 적어 주세요.', 'err'); }
     $('#d-save').disabled = true;
     setStatus('저장하는 중…');

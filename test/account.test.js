@@ -153,6 +153,38 @@ test('전체 접속자 수: 같은 계정 여러 탭·브라우저는 1명, 다�
   assert.equal(await online(), base);
 });
 
+test('아바타 꾸미기: 고르기 전엔 기본(null), 저장하면 계정에 남아 다른 브라우저 로그인에서도 같음, 옥상의 다른 사람에게 바로 반영, 잘못된 값 거절', async () => {
+  const { validAvatar, avatarOf, HAIRS, TOPS, BOTTOMS } = await import('../public/js/shared/avatar.js');
+  assert.equal(HAIRS.length * TOPS.length * BOTTOMS.length, 72);
+  assert.deepEqual(avatarOf(null), { hair: 0, top: 0, bottom: 0 }); // 짧은 가르마 + 연보라 + 짙은 긴바지
+  assert.equal(validAvatar({ hair: 6, top: 0, bottom: 0 }), null);
+  assert.equal(validAvatar({ hair: 1, top: 2 }), null);
+  const a = jar();
+  await a.call('/api/guest', { method: 'POST', body: {} });
+  assert.equal((await a.call('/api/me')).body.user.avatar, null);
+  await a.call('/api/account/register', { method: 'POST', body: { nickname: '묶음머리', password: 'pass-word-9', passwordConfirm: 'pass-word-9' } });
+  assert.equal((await a.call('/api/me/avatar', { method: 'PUT', body: { hair: 9, top: 0, bottom: 0 } })).status, 400);
+  // 옥상에 다른 사람(b)이 있는 동안 a가 옥상에 들어가 있다가 모습을 바꿈
+  const b = jar(); await b.call('/api/guest', { method: 'POST', body: {} });
+  const sa = ioc(BASE, { extraHeaders: { cookie: a.cookie }, transports: ['websocket'] });
+  const sb = ioc(BASE, { extraHeaders: { cookie: b.cookie }, transports: ['websocket'] });
+  await Promise.all([new Promise((r) => sa.on('connect', r)), new Promise((r) => sb.on('connect', r))]);
+  await new Promise((r) => sb.emit('join', { place: 'rooftop' }, r));
+  const joined = new Promise((r) => sb.on('player:join', r));
+  await new Promise((r) => sa.emit('join', { place: 'rooftop' }, r));
+  assert.equal((await joined).avatar, null);
+  const changed = new Promise((r) => sb.on('player:avatar', r));
+  const saved = await a.call('/api/me/avatar', { method: 'PUT', body: { hair: 5, top: 0, bottom: 1 } });
+  assert.deepEqual(saved.body.user.avatar, { hair: 5, top: 0, bottom: 1 });
+  assert.deepEqual((await changed).avatar, { hair: 5, top: 0, bottom: 1 });
+  sa.close(); sb.close();
+  // 다른 브라우저에서 로그인해도 같은 모습
+  const c = jar();
+  const li = await c.call('/api/account/login', { method: 'POST', body: { nickname: '묶음머리', password: 'pass-word-9' } });
+  assert.equal(li.status, 200, JSON.stringify(li.body));
+  assert.deepEqual((await c.call('/api/me')).body.user.avatar, { hair: 5, top: 0, bottom: 1 });
+});
+
 test('비밀번호를 계속 틀리면 잠시 막음', async () => {
   const x = jar();
   let last;

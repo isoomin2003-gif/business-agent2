@@ -1,3 +1,4 @@
+import { validAvatar } from '../public/js/shared/avatar.js';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { getDb, nowIso } from './db.js';
@@ -40,7 +41,7 @@ async function createSession(userId) {
 }
 
 export async function createGuest(nickname) {
-  const user = { id: crypto.randomUUID(), nickname: nickname || randomNickname(), color: crypto.randomInt(8), registered: false };
+  const user = { id: crypto.randomUUID(), nickname: nickname || randomNickname(), color: crypto.randomInt(8), registered: false, avatar: null };
   const t = nowIso();
   // users.token_hash는 예전 형식과의 호환용(임의 값). 실제 로그인 상태는 sessions 표로 확인
   await getDb().run('INSERT INTO users (id, token_hash, nickname, color, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -48,11 +49,18 @@ export async function createGuest(nickname) {
   return { token: await createSession(user.id), user };
 }
 
-const toUser = (row) => (row ? { id: row.id, nickname: row.nickname, color: Number(row.color), registered: !!row.account_key } : null);
+/** 저장된 아바타(JSON 글자) → { hair, top, bottom } 또는 null(아직 고르지 않음 = 기본 착장) */
+export const parseAvatar = (v) => { try { return validAvatar(JSON.parse(v)); } catch { return null; } };
+const toUser = (row) => (row ? { id: row.id, nickname: row.nickname, color: Number(row.color), registered: !!row.account_key, avatar: parseAvatar(row.avatar) } : null);
+
+/** 아바타 저장 (검사를 통과한 값만) */
+export async function saveAvatar(userId, avatar) {
+  await getDb().run('UPDATE users SET avatar = ? WHERE id = ?', [JSON.stringify(avatar), userId]);
+}
 
 export async function userFromToken(token) {
   if (!token || typeof token !== 'string' || token.length > 100) return null;
-  return toUser(await getDb().get('SELECT u.id, u.nickname, u.color, u.account_key FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?', [hashToken(token)]));
+  return toUser(await getDb().get('SELECT u.id, u.nickname, u.color, u.account_key, u.avatar FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?', [hashToken(token)]));
 }
 
 // ── 정식 계정 (닉네임 + 비밀번호) ──
@@ -104,7 +112,7 @@ export async function registerAccount(userId, nickname, password) {
 
 /** 닉네임과 비밀번호가 모두 맞을 때만 새 세션. 틀리면 어느 쪽이 틀렸는지 알려 주지 않음 */
 export async function loginAccount(nickname, password) {
-  const row = await getDb().get('SELECT id, nickname, color, account_key, password_hash FROM users WHERE account_key = ?', [accountKey(nickname)]);
+  const row = await getDb().get('SELECT id, nickname, color, account_key, password_hash, avatar FROM users WHERE account_key = ?', [accountKey(nickname)]);
   if (!row) {
     dummyHash ||= await hashPassword('timing-equalizer');
     await verifyPassword(password, dummyHash);

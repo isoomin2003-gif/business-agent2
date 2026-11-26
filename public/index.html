@@ -14,10 +14,10 @@
 <body>
   <main id="landing" class="landing">
     <header class="landing-top"><span class="online-chip" data-online>현재 접속: –명</span><button class="icon-btn" data-open-manual data-tip="사용 설명서" aria-label="사용 설명서"></button></header>
-    <div class="landing-card">
+    <div class="landing-card" id="landing-main">
       <canvas id="landing-art" width="160" height="90" aria-hidden="true"></canvas>
       <h1>하루 한 장</h1>
-      <p class="lead">하루의 한 순간을 <b>짧은 영상</b>과 <b>한 문장</b>으로 책장에 모으고,<br>옥상과 공원에서 다른 사람과 조용히 시간을 보내는 곳이에요.</p>
+      <p class="lead">하루의 한 순간을 <b>사진이나 짧은 영상</b>과 <b>한 문장</b>으로 책장에 모으고,<br>옥상과 공원에서 다른 사람과 조용히 시간을 보내는 곳이에요.</p>
       <div class="nick-row" id="nick-row">
         <div id="nick-view"><span class="label">닉네임</span> <b id="nick-text">…</b> <button class="btn btn-small" id="nick-edit">변경</button></div>
         <form id="nick-form" class="row" hidden autocomplete="off">
@@ -26,6 +26,7 @@
           <button type="button" class="btn btn-small" id="nick-cancel">취소</button>
         </form>
         <p id="nick-msg" class="nick-msg" hidden></p>
+        <div class="av-home"><canvas id="av-mini" width="20" height="36" aria-hidden="true"></canvas><button class="btn btn-small" id="avatar-btn">🎨 아바타 꾸미기</button></div>
         <div class="account-row" id="account-row">
           <span id="acct-badge" class="acct-badge" hidden>✔ 정식 계정</span>
           <button class="btn btn-small" id="acct-create">내 계정 만들기</button>
@@ -37,6 +38,7 @@
       <p class="fine" id="landing-fine">설치나 회원가입 없이 임시 닉네임으로 바로 체험할 수 있어요. 다른 브라우저에서도 내 방에 들어오려면 <b>내 계정 만들기</b>로 비밀번호를 정해 두세요.</p>
       <p id="start-error" class="error" hidden></p>
     </div>
+    <section id="avatar-maker" class="av-maker" hidden aria-labelledby="av-title"></section>
   </main>
 
   <section id="game" class="game" hidden>

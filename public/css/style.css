@@ -479,3 +479,60 @@ textarea#d-text { font-size: 18px; line-height: 1.8; }
 .news-paper .news-empty { margin: 14px 0 4px; font-size: 16px; }
 .newsstand .news-loading { padding: 24px; text-align: center; }
 @media (max-width: 640px) { .news-paper { padding: 12px; } .news-paper .news-body p { font-size: 15px; } }
+
+/* ── 아바타 꾸미기 (홈) ── */
+.av-home { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; }
+.av-home canvas { width: 30px; height: 54px; image-rendering: pixelated; }
+.av-maker { width: min(560px, 100%); margin: 0 auto; text-align: center; }
+.av-maker h2 { font-size: 26px; margin: 4px 0 4px; color: var(--accent); }
+.av-sub { margin: 0 0 12px; font-size: 14px; opacity: .85; }
+.av-stage { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 12px; }
+.av-preview { box-sizing: content-box; width: 120px; height: 216px; image-rendering: pixelated; background: radial-gradient(ellipse at 50% 92%, rgba(0,0,0,.25) 0 22%, transparent 23%), #f3e9d6; border: 3px solid #0e0a14; border-radius: 8px; box-shadow: var(--shadow); padding: 8px 20px; }
+.av-turn { display: flex; gap: 6px; }
+.av-turn .chip.on { background: var(--accent); color: var(--accent-ink); }
+.av-group { margin: 10px 0; }
+.av-group h3 { font-size: 15px; margin: 0 0 6px; }
+.av-opts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.av-bottom { grid-template-columns: repeat(2, minmax(0, 120px)); justify-content: center; }
+.av-opt { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px; background: #f3e9d6; color: #3b2a22; border: 2px solid #0e0a14; border-radius: 6px; cursor: pointer; font: inherit; font-size: 11px; line-height: 1.25; min-height: 44px; }
+.av-opt canvas { image-rendering: pixelated; max-width: 100%; height: auto; }
+.av-opt[aria-checked="true"] { outline: 3px solid var(--accent); outline-offset: 1px; background: #fff6e0; }
+.av-opt span { word-break: keep-all; }
+.av-swatch { display: block; width: 34px; height: 34px; border: 2px solid #2a1c19; border-radius: 6px; }
+.av-note { font-size: 12px; opacity: .75; margin: 6px 0; }
+.av-actions { display: flex; gap: 10px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+@media (max-width: 520px) {
+  .av-opts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .av-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .av-preview { width: 100px; height: 180px; padding: 6px 16px; }
+}
+
+/* ── 사용 설명서: 어느 쪽을 펼쳐도 같은 크기 (화면 크기로만 정해짐), 글이 길면 본문만 스크롤 ── */
+.modal.manual-modal { overflow: hidden; }
+.manual { height: min(600px, calc(100dvh - 72px)); grid-template-rows: minmax(0, 1fr); }
+.m-cover { min-height: 0; }
+.m-cover canvas { max-height: 100%; height: auto; max-width: 100%; }
+.m-page { min-height: 0; height: 100%; box-sizing: border-box; overflow: hidden; }
+.m-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding-right: 4px; scrollbar-gutter: stable; }
+.m-scroll .m-items { flex: 0 0 auto; }
+.m-foot { flex: 0 0 auto; }
+@media (max-width: 720px) {
+  .modal.manual-modal { height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); display: flex; flex-direction: column; overflow: hidden; }
+  .manual-modal .modal-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .manual { height: auto; flex: 1 1 auto; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+  .m-page { height: auto; min-height: 0; }
+}
+.m-num { display: inline-block; min-width: 4.2em; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* ── 다이어리 쓰기: 버튼에 올리기·누르기·파일 고르기 전후로 작성창과 버튼이 움직이지 않게 ── */
+.diary-form .d-attach { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.diary-form .d-attach.with-cam { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.diary-form .d-attach .btn { justify-content: center; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.diary-modal .btn:active:not(:disabled) { transform: none; } /* 누를 때 내려앉는 효과 대신 색만 */
+.diary-modal .btn:active:not(:disabled) { filter: brightness(.9); }
+.diary-form #d-clear:disabled { opacity: .45; cursor: default; }
+.diary-form .progress { margin: -4px 0; }
+.diary-modal #d-status { min-height: 2.9em; margin: 0; }
+.diary-modal .video-box { width: 100%; }
+.diary-form .d-attach .btn { padding-left: 6px; padding-right: 6px; display: flex; align-items: center; }
+@media (max-width: 460px) { .diary-form .d-attach.with-cam { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

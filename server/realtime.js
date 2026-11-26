@@ -80,7 +80,7 @@ export function dropSessionSockets(token) {
   for (const [, s] of io.of('/').sockets) if (s.data.sessionHash === h) s.disconnect(true);
 }
 
-const serialize = (p) => ({ sid: p.sid, userId: p.userId, nickname: p.nickname, color: p.color, seat: p.seat, points: p.points, startAt: p.startAt, wish: p.wish && p.wish.until > Date.now() ? p.wish : null });
+const serialize = (p) => ({ sid: p.sid, userId: p.userId, nickname: p.nickname, color: p.color, avatar: p.avatar, seat: p.seat, points: p.points, startAt: p.startAt, wish: p.wish && p.wish.until > Date.now() ? p.wish : null });
 
 function broadcastCounts() { io.emit('counts', counts()); }
 
@@ -153,6 +153,19 @@ export function unfloatWish(wishId) {
   }
 }
 
+/** 아바타 꾸미기 변경을 접속 중인 소켓과 옥상·공원의 다른 사람 화면에 반영 (player:avatar) */
+export function setAvatarLive(userId, avatar) {
+  if (!io) return;
+  for (const [, s] of io.of('/').sockets) if (s.data.user?.id === userId) s.data.user.avatar = avatar;
+  for (const [placeId, pl] of Object.entries(places)) {
+    for (const p of pl.players.values()) {
+      if (p.userId !== userId) continue;
+      p.avatar = avatar;
+      io.to(placeId).emit('player:avatar', { sid: p.sid, avatar });
+    }
+  }
+}
+
 /** 닉네임 변경을 접속 중인 소켓과 야외 아바타에 반영 (같은 장소 사람들에게 player:rename) */
 export function renameLive(userId, nickname) {
   if (!io) return;
@@ -221,7 +234,7 @@ export function setupRealtime(server) {
       leavePlace(socket);
       const def = PLACES[placeId];
       const spawn = def.spawn;
-      const p = { sid: socket.id, userId: user.id, nickname: user.nickname, color: user.color, seat: null, points: [{ x: spawn.x, y: spawn.y - 4 }, { x: spawn.x, y: spawn.y }], startAt: Date.now(), wish: null };
+      const p = { sid: socket.id, userId: user.id, nickname: user.nickname, color: user.color, avatar: user.avatar || null, seat: null, points: [{ x: spawn.x, y: spawn.y - 4 }, { x: spawn.x, y: spawn.y }], startAt: Date.now(), wish: null };
       places[placeId].players.set(socket.id, p);
       socket.join(placeId);
       socket.data.place = placeId;
