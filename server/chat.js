@@ -65,11 +65,11 @@ async function makeQuestion(user, day, weekStart, seq) {
       const recent = await db.all(`SELECT w.week_start, w.topic, (SELECT question FROM chat_turns t WHERE t.user_id = w.user_id AND t.week_start = w.week_start ORDER BY day, seq LIMIT 1) AS q
         FROM chat_weeks w WHERE w.user_id = ? AND w.week_start >= ? ORDER BY w.week_start DESC`, [user.id, addDays(weekStart, -42)]);
       const list = recent.length ? recent.map((w) => `- ${w.topic}: ${w.q || ''}`).join('\n') : '(없음)';
-      r = await askJson(FIRST_PROMPT, `최근 주제와 질문:\n${list}\n\n오늘: ${day}`, { maxTokens: 300, temperature: 0.9, timeoutMs: 20000 });
+      r = await askJson(FIRST_PROMPT, `최근 주제와 질문:\n${list}\n\n오늘: ${day}`, { maxTokens: 1200, temperature: 0.9, timeoutMs: 20000 });
       if (r.ok) topic = line(r.json.topic, 30) || '이번 주 이야기';
     } else {
       const convo = history.map((t) => `질문: ${t.question}\n답: ${t.answer || '(아직 답하지 않음)'}`).join('\n');
-      r = await askJson(FOLLOW_PROMPT, `이번 주 주제: ${topic || '(없음)'}\n같은 날 ${seq}번째 질문\n\n이번 주 대화:\n${convo || '(없음)'}`, { maxTokens: 300, temperature: 0.8, timeoutMs: 20000 });
+      r = await askJson(FOLLOW_PROMPT, `이번 주 주제: ${topic || '(없음)'}\n같은 날 ${seq}번째 질문\n\n이번 주 대화:\n${convo || '(없음)'}`, { maxTokens: 1200, temperature: 0.8, timeoutMs: 20000 });
     }
     if (!r.ok) return { ok: false, status: r.status };
     const question = line(r.json.question, 120);

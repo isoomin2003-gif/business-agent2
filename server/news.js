@@ -75,7 +75,7 @@ export async function draftIssue(turns, nickname) {
   if (!turns.length) return { status: 'skipped', skip_reason: 'no_conversation' };
   // 1) 계획 (대화의 질문과 답만 보냄 — 닉네임·계정 정보 없음)
   const convo = turns.map((t) => `질문: ${t.question}\n답: ${t.answer}`).join('\n');
-  const plan = await askJson(PLAN_PROMPT, `이번 주 대화:\n${convo}`, { maxTokens: 400, temperature: 0.3, title: 'Haru Hanjang Newspaper' });
+  const plan = await askJson(PLAN_PROMPT, `이번 주 대화:\n${convo}`, { maxTokens: 1500, temperature: 0.3, title: 'Haru Hanjang Newspaper' });
   if (!plan.ok) return { status: 'retry', step: 'plan', why: plan.status, raw: plan.raw };
   if (plan.json.skip || !plan.json.question) return { status: 'skipped', skip_reason: `vague: ${line(plan.json.reason, 80)}` };
   const answers = turns.map((t) => t.answer);
@@ -94,7 +94,7 @@ export async function draftIssue(turns, nickname) {
   // 3) 작성: 원문에서 확인한 내용만
   const question = line(plan.json.question, 100);
   const srcText = sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url})\n원문: ${s.text}`).join('\n\n');
-  const art = await askJson(WRITE_PROMPT, `질문: ${question}\n관심사가 드러난 말(요약): ${line(plan.json.evidence, 60)}\n\n출처 원문:\n${srcText}`, { maxTokens: 1200, temperature: 0.4, timeoutMs: 40000, title: 'Haru Hanjang Newspaper' });
+  const art = await askJson(WRITE_PROMPT, `질문: ${question}\n관심사가 드러난 말(요약): ${line(plan.json.evidence, 60)}\n\n출처 원문:\n${srcText}`, { maxTokens: 3000, temperature: 0.4, timeoutMs: 40000, title: 'Haru Hanjang Newspaper' });
   if (!art.ok) return { status: 'retry', step: 'write', why: art.status, raw: art.raw, queries };
   const used = (Array.isArray(art.json.used) ? art.json.used : []).map(Number).filter((n) => n >= 1 && n <= sources.length);
   const title = line(art.json.title, 60), body = String(art.json.body || '').trim().slice(0, 1400), reason = line(art.json.reason, 120);

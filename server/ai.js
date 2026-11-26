@@ -2,7 +2,14 @@
 import { config } from './config.js';
 
 /** { ok: true, json } | { ok: false, status: 'no_key' | 'api_error' | 'bad_json' } */
-export async function askJson(system, user, { maxTokens = 700, temperature = 0.7, timeoutMs = 25000, title = 'Haru Hanjang' } = {}) {
+export async function askJson(system, user, opts = {}) {
+  const r = await askOnce(system, user, opts);
+  // 답이 길이 제한에 걸려 잘렸으면 한 번만 넉넉하게 다시
+  if (!r.ok && r.status === 'bad_json' && r.truncated) return askOnce(system, user, { ...opts, maxTokens: (opts.maxTokens || 1500) * 2 });
+  return r;
+}
+
+async function askOnce(system, user, { maxTokens = 1500, temperature = 0.7, timeoutMs = 25000, title = 'Haru Hanjang' } = {}) {
   if (!config.openrouter.apiKey) return { ok: false, status: 'no_key' };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -13,8 +20,10 @@ export async function askJson(system, user, { maxTokens = 700, temperature = 0.7
       body: JSON.stringify({ model: config.openrouter.model, temperature, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
     });
     if (!res.ok) { console.warn(`[ai] OpenRouter HTTP ${res.status}`); return { ok: false, status: 'api_error' }; }
-    const content = String((await res.json())?.choices?.[0]?.message?.content || '');
-    try { return { ok: true, json: JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] || '') }; } catch { console.warn(`[ai] JSON이 아닌 응답: ${content.slice(0, 200)}`); return { ok: false, status: 'bad_json', raw: content.slice(0, 600) }; }
+    const choice = (await res.json())?.choices?.[0];
+    const content = String(choice?.message?.content || '');
+    const truncated = choice?.finish_reason === 'length';
+    try { return { ok: true, json: JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] || '') }; } catch { console.warn(`[ai] JSON이 아닌 응답: ${content.slice(0, 200)}`); return { ok: false, status: 'bad_json', truncated, raw: content.slice(0, 600) }; }
   } catch (e) {
     console.warn(`[ai] OpenRouter error: ${e.message}`);
     return { ok: false, status: 'api_error' };
