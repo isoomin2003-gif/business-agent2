@@ -8,6 +8,9 @@ import { createGuest, setGuestCookie, clearSessionCookie, userFromToken, COOKIE,
 import { diaryRouter, SAMPLE_VIDEOS } from './diary.js';
 import { memoryRouter } from './memory.js';
 import { wishRouter } from './wishes.js';
+import { chatRouter } from './chat.js';
+import { newsRouter, startNewsScheduler, catchUp } from './news.js';
+import { setNow, resetClock, now as clockNow } from './kst.js';
 import { setupRealtime, counts, onlineCount, fireStar, getRadio, renameLive, dropSessionSockets } from './realtime.js';
 import { TRACKS } from './tracks.js';
 import { loadLibrary, addedTracks, getTrack } from './library.js';
@@ -167,6 +170,8 @@ app.get('/healthz', (req, res) => res.json({
 app.use('/api', diaryRouter);
 app.use('/api', memoryRouter);
 app.use('/api', wishRouter);
+app.use('/api', chatRouter);
+app.use('/api', newsRouter);
 
 // ── 발표 시연용 (ADMIN_KEY 필요) ──
 app.post('/api/admin/star', requireAdmin, express.json(), (req, res) => {
@@ -180,6 +185,14 @@ app.post('/api/admin/radio/fast-forward', requireAdmin, express.json(), (req, re
   res.json({ ok: true, radio: getRadio().snapshot() });
 });
 app.get('/api/admin/check', requireAdmin, (req, res) => res.json({ ok: true }));
+// 자동 테스트 전용 시계 (ALLOW_TEST_CLOCK=1로 띄운 서버에서만). 배포 환경에서는 없음
+if (process.env.ALLOW_TEST_CLOCK === '1') {
+  app.post('/api/test/clock', express.json(), (req, res) => {
+    if (req.body?.reset) resetClock(); else setNow(Date.parse(req.body?.at));
+    res.json({ now: new Date(clockNow()).toISOString() });
+  });
+  app.post('/api/test/catch-up', wrap(async (req, res) => res.json({ done: await catchUp() })));
+}
 // 페이지·JS·CSS는 매번 서버에 새 버전이 있는지 확인(no-cache + ETag)해서, 배포 직후에도 옛 화면이 남지 않게 합니다.
 // 음원·샘플 영상·이미지는 바뀌지 않으므로 하루 동안 캐시합니다.
 app.use(express.static(PATHS.public, {
@@ -198,6 +211,7 @@ app.use((err, req, res, next) => {
 
 const server = http.createServer(app);
 setupRealtime(server);
+startNewsScheduler(); // 매주 일요일 18:00(KST) 발행분을 미리 만들고, 잠들었다 깨어나면 밀린 호를 복구
 server.listen(config.port, () => {
   console.log(`하루 한 장 서버: http://localhost:${config.port}`);
   console.log(`[db] ${db.kind === 'postgres' ? 'PostgreSQL(DATABASE_URL) — 재시작·재배포 후에도 보존' : `SQLite — ${PATHS.db}`}`);

@@ -1,4 +1,4 @@
-// 벤치 좌석: 옥상 벤치 2개 × 4자리, 공원 벤치 1개 × 4자리. 네 번째 자리까지 앉고, 모든 화면에 같은 자리, 일어나면 다른 사람이 앉음
+// 벤치 좌석: 옥상 벤치 2개 × 4자리, 공원 긴 벤치 1개 × 5자리. 네 번째 자리까지 앉고, 모든 화면에 같은 자리, 일어나면 다른 사람이 앉음
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -36,8 +36,8 @@ async function person(place) {
   return s;
 }
 
-test('좌석 배치: 벤치마다 4자리가 좌판 안에 고르게, 서로 겹치지 않음', () => {
-  const benches = { rooftop: [['A1', 'A2', 'A3', 'A4'], ['B1', 'B2', 'B3', 'B4']], park: [['P1', 'P2', 'P3', 'P4']] };
+test('좌석 배치: 옥상 벤치마다 4자리·공원 긴 벤치 5자리가 좌판 안에 고르게, 서로 겹치지 않음', () => {
+  const benches = { rooftop: [['A1', 'A2', 'A3', 'A4'], ['B1', 'B2', 'B3', 'B4']], park: [['P1', 'P2', 'P3', 'P4', 'P5']] };
   for (const [place, groups] of Object.entries(benches)) {
     assert.equal(Object.keys(PLACES[place].seats).length, groups.flat().length);
     for (const g of groups) {
@@ -49,8 +49,8 @@ test('좌석 배치: 벤치마다 4자리가 좌판 안에 고르게, 서로 겹
   }
 });
 
-for (const [place, ids] of [['rooftop', ['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'B3', 'B4']], ['park', ['P1', 'P2', 'P3', 'P4']]]) {
-  test(`${place}: ${ids.length}명이 모든 자리(네 번째 자리 포함)에 앉고, 모든 화면에 같은 자리, 일어난 자리에 다른 사람`, async () => {
+for (const [place, ids] of [['rooftop', ['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'B3', 'B4']], ['park', ['P1', 'P2', 'P3', 'P4', 'P5']]]) {
+  test(`${place}: ${ids.length}명이 모든 자리(끝자리 포함)에 앉고, 모든 화면에 같은 자리, 일어난 자리에 다른 사람`, async () => {
     const people = [];
     for (const id of ids) {
       const s = await person(place);
@@ -62,7 +62,7 @@ for (const [place, ids] of [['rooftop', ['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'B3
     for (const viewer of people) for (const [i, p] of people.entries()) assert.equal(viewer.seats.get(p.sid), ids[i], `${ids[i]}가 모든 화면에 같은 자리`);
     // 자리가 다 찼으면 더 앉을 수 없음
     const extra = await person(place);
-    assert.equal((await emit(extra, 'sit', { seat: ids[3] })).ok, false);
+    assert.equal((await emit(extra, 'sit', { seat: ids.at(-1) })).ok, false);
     // 네 번째 자리 사람이 일어나면(다른 곳으로 걸어감) 새 사람이 그 자리에 앉음
     await emit(people[3], 'move', { x: 100, y: 170 });
     await new Promise((r) => setTimeout(r, 100));

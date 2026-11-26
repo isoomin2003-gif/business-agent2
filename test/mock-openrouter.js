@@ -57,6 +57,33 @@ export function composeTurn(text) {
   });
 }
 
+// 대화 질문·주간신문 흉내 (시스템 프롬프트 첫머리의 표시로 구분)
+const TOPICS_MOCK = [['요즘 듣는 소리', '요즘 자주 듣는 노래나 소리가 있어?'], ['찍어 둔 사진', '최근에 찍은 사진 중 기억에 남는 게 있어?'], ['손으로 만든 것', '요즘 손으로 만들어 본 게 있어?']];
+export function diaryTurn(system, user) {
+  if (system.startsWith('[대화-첫질문]')) {
+    const pick = TOPICS_MOCK.find(([t]) => !user.includes(t)) || TOPICS_MOCK[0];
+    return { topic: pick[0], greeting: '안녕, 오늘도 와 줘서 반가워!', question: pick[1] };
+  }
+  if (system.startsWith('[대화-이어가기]')) {
+    const answers = [...user.matchAll(/답: (.+)/g)].map((m) => m[1]).filter((a) => !a.includes('아직 답하지'));
+    const last = answers.at(-1) || '';
+    if (/그냥/.test(last)) return { greeting: '', question: '그때 눈에 들어온 게 있었어?' };
+    return { greeting: user.includes('1번째') ? '다시 왔네!' : '', question: `"${last.slice(0, 12)}" 이야기, 그때 어떤 기억이 떠올랐어?` };
+  }
+  if (system.startsWith('[신문-계획]')) {
+    const answers = [...user.matchAll(/답: (.+)/g)].map((m) => m[1]).join(' ');
+    if (/출처없음/.test(answers)) return { skip: false, evidence: '아무도 모르는 것', question: '알 수 없는 것은?', queries_ko: ['zzzz 없는 말'], query_en: 'zzzz' };
+    if (/불빛|번졌/.test(answers)) return { skip: false, evidence: '밤 호수 사진의 번진 불빛', question: '밤에 찍은 호수 사진에서 불빛은 왜 번질까?', queries_ko: ['보케', '야경 사진'], query_en: 'bokeh' };
+    if (/노래/.test(answers)) return { skip: false, evidence: '할머니 집에서 듣던 옛날 노래', question: '옛날 가요는 어떻게 사랑받았을까?', queries_ko: ['트로트'], query_en: 'trot music' };
+    return { skip: true, reason: '관심사를 특정하기 어려움' };
+  }
+  if (system.startsWith('[신문-기사]')) {
+    const titles = [...user.matchAll(/\[(\d+)\] (.+?) \(/g)].map((m) => m[2]);
+    return { title: `${titles[0]} 이야기`, body: `${titles[0]}에 대해 출처에서 확인한 내용입니다.\n\n두 번째 문단입니다.`, reason: '지난주 사진 이야기에서 시작했어요.', used: [1] };
+  }
+  return null;
+}
+
 export function startMockOpenRouter(port = 0, logFile) {
   const server = http.createServer((req, res) => {
     let body = '';
@@ -66,6 +93,8 @@ export function startMockOpenRouter(port = 0, logFile) {
       if (logFile) fs.appendFileSync(logFile, JSON.stringify({ url: req.url, auth: req.headers.authorization ? 'present' : 'missing', body: parsed }) + '\n');
       if (req.url.startsWith('/fail')) { res.writeHead(503, { 'Content-Type': 'application/json' }); return res.end('{"error":{"message":"mock outage"}}'); }
       res.writeHead(200, { 'Content-Type': 'application/json' });
+      const sys0 = parsed.messages?.[0]?.content || '';
+      if (/^\[(대화|신문)-/.test(sys0)) return res.end(JSON.stringify({ model: 'mock/diary', choices: [{ message: { role: 'assistant', content: JSON.stringify(diaryTurn(sys0, parsed.messages.find((m) => m.role === 'user').content)) } }] }));
       if (/AI 작곡가/.test(parsed.messages?.[0]?.content || '')) return res.end(JSON.stringify({ model: 'mock/compose', choices: [{ message: { role: 'assistant', content: composeTurn(parsed.messages.find((m) => m.role === 'user').content) } }] }));
       if (parsed.tools) return res.end(JSON.stringify({ model: 'mock/discover', choices: [{ message: discoverTurn(parsed.messages) }] }));
       const user = parsed.messages.find((m) => m.role === 'user').content;

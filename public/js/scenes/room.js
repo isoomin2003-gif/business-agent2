@@ -1,4 +1,4 @@
-// 내 방: 확정 배경 그림(장밋빛 벽, 창문, 벽걸이 CD 플레이어, 책상과 의자, 책장, 나무문, 러그) 위에 기능을 연결
+// 내 방: 확정 배경 그림(장밋빛 벽, 창문, 벽걸이 CD 플레이어, '주간신문' 꽂이, 책상과 의자, 책장 12권, 올리브색 문, 러그) 위에 기능을 연결
 import { rect, glow } from '../render/pixel.js';
 import { drawBackdrop, redrawParts, drawRotatedDisc, drawColoredBooks } from '../render/backdrops.js';
 import { isPlaying, cdAngle } from '../audio/roommusic.js';
@@ -36,8 +36,9 @@ export const room = {
   ],
   hotspots: [
     { id: 'cd', x: CD.x - 3, y: CD.y - 3, w: CD.w + 6, h: CD.h + 18, get label() { return isPlaying() ? '음악 끄기' : '음악 틀기'; } },
+    { id: 'news', x: 146, y: 52, w: 38, h: 34, label: '주간신문' }, // CD 플레이어와 책장 사이 벽의 신문꽂이
     { id: 'desk', x: 120, y: 92, w: 57, h: 50, label: '다이어리 쓰기' },
     { id: 'shelf', x: 205, y: 30, w: 60, h: 100, label: '내 책장' },
-    { id: 'door', x: 270, y: 42, w: 42, h: 84, label: '밖으로 나가기' },
+    { id: 'door', x: 270, y: 42, w: 42, h: 86, label: '밖으로 나가기' }, // 올리브색 문
   ],
 };

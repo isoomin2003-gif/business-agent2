@@ -13,7 +13,7 @@ for (const [id, src] of Object.entries(files)) {
   IMGS[id] = img;
   loads.push(img.decode ? img.decode().catch(() => new Promise((r) => { img.onload = r; img.onerror = r; })) : new Promise((r) => { img.onload = r; img.onerror = r; }));
 }
-// 방 책장의 책등 19개: 기록이 생길 때마다 하나씩 색을 입힌 그림(책등 윤곽 밖은 투명)과 위치
+// 방 책장의 책 12권(한 단에 4권): 기록이 생길 때마다 하나씩 색을 입힌 그림(책등 윤곽 밖은 투명)과 위치
 const booksImg = new Image(); booksImg.src = '/img/scenes/room-books.png';
 let booksMeta = null;
 loads.push(booksImg.decode().catch(() => {}), fetch('/img/scenes/room-books.json').then((r) => r.json()).then((j) => { booksMeta = j; }).catch(() => {}));

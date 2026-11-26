@@ -8,6 +8,8 @@ import { rooftop } from './scenes/rooftop.js';
 import { park, noteSlots } from './scenes/park.js';
 import { toast, closeAllModals, openModal } from './ui/modal.js';
 import { openDiary, forgetEntry } from './ui/diary.js';
+import { openDeskChat } from './ui/chat.js';
+import { openNewsstand } from './ui/newsstand.js';
 import { openBookshelf } from './ui/bookshelf.js';
 import { openBook } from './ui/book.js';
 import { openPlaces, openRadio, openTree, openStarWish, openWish, openMyWishes } from './ui/outdoor.js';
@@ -319,7 +321,9 @@ function openExample(examples, id) {
 async function onRoomHotspot(id) {
   if (id === 'desk') {
     firstHint?.remove(); firstHint = null;
-    if (await sitAtDesk()) openDiary({ onViewInShelf: openMonth, onSaved: () => refreshRoomBooks() });
+    if (await sitAtDesk()) openDeskChat({ onWrite: () => openDiary({ onViewInShelf: openMonth, onSaved: () => refreshRoomBooks() }) });
+  } else if (id === 'news') {
+    if (await walkLocal(PLACES.room.targets.news)) openNewsstand();
   } else if (id === 'shelf') {
     if (await walkLocal(PLACES.room.targets.shelf)) openBookshelf({ onOpenMonth: openMonth, onOpenExample: openExample });
   } else if (id === 'door') {
@@ -444,6 +448,7 @@ function bindStage() {
   });
   stage.on('wish', (id) => { const e = stage.entities.get(id); if (e?.wish) openWish(e.wish.wishId); });
   stage.on('step', onStep);
+  stage.on('note', (wishId) => openWish(wishId, { title: '🌳 소원 쪽지' })); // 나무에 걸린 쪽지를 하나씩 눌러 읽기
 }
 
 function bindSocket() {

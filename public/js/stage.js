@@ -345,6 +345,8 @@ export class Stage {
         }
       }
     }
+    const note = this.scene?.noteAt?.(this.bgCtx, x, y, touch ? 2 : 0);
+    if (note) return { type: 'note', id: note, label: '소원 쪽지 읽기' };
     for (const h of this.scene?.hotspots || []) {
       const hp = touch ? (h.w < 45 ? 5 : 2) : 0; // 터치: 작은 물건은 그림 주변 5좌표까지
       if (x >= h.x - hp && x <= h.x + h.w + hp && y >= h.y - hp && y <= h.y + h.h + hp) return { type: 'hotspot', id: h.id, label: h.label };

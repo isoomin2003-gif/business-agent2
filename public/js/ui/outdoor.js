@@ -413,8 +413,8 @@ export function openStarWish({ starId, place, onDone }) {
   return m;
 }
 
-export async function openWish(wishId) {
-  const m = openModal({ title: '✦ 별똥별 소원', paper: true, html: '<div id="w-one">불러오는 중…</div>' });
+export async function openWish(wishId, { title = '✦ 별똥별 소원' } = {}) {
+  const m = openModal({ title, paper: true, html: '<div id="w-one">불러오는 중…</div>' });
   const box = m.$('#w-one');
   const draw = (w) => { box.innerHTML = wishCard(w); bindReactions(box, draw, () => m.close()); };
   try { draw((await api(`/api/wishes/${wishId}`)).wish); } catch (e) { box.textContent = e.message; }

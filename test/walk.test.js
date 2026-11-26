@@ -23,7 +23,7 @@ test('가구·벤치·나무를 돌아가는 경로', () => {
   assert.ok(room.length > 2 && allWalkable('room', room), '책상·의자를 돌아감');
   const roof = routeTo('rooftop', { x: 50, y: 133 }, { x: 240, y: 133 });
   assert.ok(roof.length > 2 && allWalkable('rooftop', roof), '벤치를 돌아감');
-  const park = routeTo('park', { x: 30, y: 140 }, { x: 112, y: 140 });
+  const park = routeTo('park', { x: 30, y: 140 }, { x: 110, y: 130 });
   assert.ok(park.length > 2 && allWalkable('park', park), '벚나무 줄기를 돌아감');
 });
 
