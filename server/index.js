@@ -172,19 +172,6 @@ app.use('/api', memoryRouter);
 app.use('/api', wishRouter);
 app.use('/api', chatRouter);
 app.use('/api', newsRouter);
-// TEMP-DIAG (점검 후 바로 삭제): 실제 AI + 실제 위키백과로 대화 질문과 기사 초안을 만들어 봄. DB에 저장하지 않음
-app.get('/api/diag-0f940531613b2308d00edcff', async (req, res) => {
-  const { askJson } = await import('./ai.js');
-  const { FIRST_PROMPT, FOLLOW_PROMPT } = await import('./chat.js');
-  const { draftIssue } = await import('./news.js');
-  const out = {}; const t0 = Date.now();
-  out.first = await askJson(FIRST_PROMPT, '최근 주제와 질문:\n- 요즘 듣는 소리: 요즘 자주 듣는 노래나 소리가 있어?\n\n오늘: 2026-11-26', { maxTokens: 1200, temperature: 0.9, timeoutMs: 20000 });
-  out.follow = await askJson(FOLLOW_PROMPT, '이번 주 주제: 찍어 둔 사진\n같은 날 2번째 질문\n\n이번 주 대화:\n질문: 요즘 찍어 둔 사진 중에 마음에 드는 게 있어?\n답: 밤에 호수에 비친 불빛을 찍었는데 사진에서는 불빛이 동그랗게 다 번졌어', { maxTokens: 1200, temperature: 0.8, timeoutMs: 20000 });
-  out.vague = await draftIssue([{ question: '오늘 눈에 들어온 게 있었어?', answer: '그냥 산책했어' }], '점검닉');
-  out.article = await draftIssue([{ question: '요즘 찍어 둔 사진 중에 마음에 드는 게 있어?', answer: '밤에 호수에 비친 불빛을 찍었는데 사진에서는 불빛이 동그랗게 다 번졌어. 왜 그렇게 되는지 궁금해' }], '점검닉');
-  out.ms = Date.now() - t0;
-  res.json(out);
-});
 
 // ── 발표 시연용 (ADMIN_KEY 필요) ──
 app.post('/api/admin/star', requireAdmin, express.json(), (req, res) => {
