@@ -1,4 +1,4 @@
-// 벤치 좌석: 옥상 벤치 2개 × 4자리, 공원 긴 벤치 1개 × 5자리. 네 번째 자리까지 앉고, 모든 화면에 같은 자리, 일어나면 다른 사람이 앉음
+// 벤치 좌석: 옥상 벤치 2개 × 3자리, 공원 긴 벤치 1개 × 5자리. 끝자리까지 앉고, 모든 화면에 같은 자리, 일어나면 다른 사람이 앉음
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -36,20 +36,20 @@ async function person(place) {
   return s;
 }
 
-test('좌석 배치: 옥상 벤치마다 4자리·공원 긴 벤치 5자리가 좌판 안에 고르게, 서로 겹치지 않음', () => {
-  const benches = { rooftop: [['A1', 'A2', 'A3', 'A4'], ['B1', 'B2', 'B3', 'B4']], park: [['P1', 'P2', 'P3', 'P4', 'P5']] };
+test('좌석 배치: 옥상 벤치마다 3자리·공원 긴 벤치 5자리가 좌판 안에 고르게, 1.5배 아바타가 서로 겹치지 않음', () => {
+  const benches = { rooftop: [['A1', 'A2', 'A3'], ['B1', 'B2', 'B3']], park: [['P1', 'P2', 'P3', 'P4', 'P5']] };
   for (const [place, groups] of Object.entries(benches)) {
     assert.equal(Object.keys(PLACES[place].seats).length, groups.flat().length);
     for (const g of groups) {
       const xs = g.map((id) => PLACES[place].seats[id].x);
       const gaps = xs.slice(1).map((x, i) => x - xs[i]);
       assert.ok(gaps.every((d) => d === gaps[0]), `${place} 간격이 고름`);
-      assert.ok(gaps[0] >= 12, `${place} 아바타 폭(10)보다 넓은 간격`);
+      assert.ok(gaps[0] >= 15, `${place} 1.5배 아바타 폭(몸 약 12, 이름표 포함 여유)보다 넓은 간격`);
     }
   }
 });
 
-for (const [place, ids] of [['rooftop', ['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'B3', 'B4']], ['park', ['P1', 'P2', 'P3', 'P4', 'P5']]]) {
+for (const [place, ids] of [['rooftop', ['A1', 'A2', 'A3', 'B1', 'B2', 'B3']], ['park', ['P1', 'P2', 'P3', 'P4', 'P5']]]) {
   test(`${place}: ${ids.length}명이 모든 자리(끝자리 포함)에 앉고, 모든 화면에 같은 자리, 일어난 자리에 다른 사람`, async () => {
     const people = [];
     for (const id of ids) {
