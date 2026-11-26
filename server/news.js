@@ -67,23 +67,21 @@ function cleanQuery(q, answers, nickname) {
   return s;
 }
 
-/** 한 사람의 한 주 기사 만들기 → 'published' | 'skipped' 줄을 저장 (AI·검색 연결 실패는 저장하지 않고 다음에 다시) */
-async function buildIssue(user, weekStart) {
-  const db = getDb();
-  const turns = await db.all("SELECT question, answer FROM chat_turns WHERE user_id = ? AND week_start = ? AND status = 'answered' ORDER BY day, seq", [user.id, weekStart]);
-  const save = (fields) => db.run(`INSERT INTO newspapers (id, user_id, week_start, issue_date, publish_at, status, skip_reason, title, body, reason, question, sources, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`, [crypto.randomUUID(), user.id, weekStart, issueDateOf(weekStart), new Date(publishAtOf(weekStart)).toISOString(),
-    fields.status, fields.skip_reason || null, fields.title || null, fields.body || null, fields.reason || null, fields.question || null, fields.sources ? JSON.stringify(fields.sources) : null, nowIso()]);
-  if (!turns.length) { await save({ status: 'skipped', skip_reason: 'no_conversation' }); return 'skipped'; }
+/**
+ * 한 주 대화(질문·답)로 기사 초안 만들기 — 저장하지 않음
+ * → { status: 'published', title, body, reason, question, sources, queries } | { status: 'skipped', skip_reason } | { status: 'retry' } (AI·검색 연결 실패: 다음에 다시)
+ */
+export async function draftIssue(turns, nickname) {
+  if (!turns.length) return { status: 'skipped', skip_reason: 'no_conversation' };
   // 1) 계획 (대화의 질문과 답만 보냄 — 닉네임·계정 정보 없음)
   const convo = turns.map((t) => `질문: ${t.question}\n답: ${t.answer}`).join('\n');
   const plan = await askJson(PLAN_PROMPT, `이번 주 대화:\n${convo}`, { maxTokens: 400, temperature: 0.3, title: 'Haru Hanjang Newspaper' });
-  if (!plan.ok) return 'retry';
-  if (plan.json.skip || !plan.json.question) { await save({ status: 'skipped', skip_reason: `vague: ${line(plan.json.reason, 80)}` }); return 'skipped'; }
+  if (!plan.ok) return { status: 'retry' };
+  if (plan.json.skip || !plan.json.question) return { status: 'skipped', skip_reason: `vague: ${line(plan.json.reason, 80)}` };
   const answers = turns.map((t) => t.answer);
   const queries = [
-    ...(Array.isArray(plan.json.queries_ko) ? plan.json.queries_ko : []).map((q) => ['ko', cleanQuery(q, answers, user.nickname)]),
-    ['en', cleanQuery(plan.json.query_en, answers, user.nickname)],
+    ...(Array.isArray(plan.json.queries_ko) ? plan.json.queries_ko : []).map((q) => ['ko', cleanQuery(q, answers, nickname)]),
+    ['en', cleanQuery(plan.json.query_en, answers, nickname)],
   ].filter(([, q]) => q).slice(0, 3);
   // 2) 검색 (검색어만 외부로)
   const sources = [];
@@ -91,17 +89,29 @@ async function buildIssue(user, weekStart) {
     for (const [lang, q] of queries) {
       for (const s of await wikiSearch(lang, q)) if (!sources.some((x) => x.url === s.url) && sources.length < 4) sources.push(s);
     }
-  } catch (e) { console.warn('[news] search failed:', e.message); return 'retry'; }
-  if (!sources.length) { await save({ status: 'skipped', skip_reason: 'no_sources' }); return 'skipped'; }
+  } catch (e) { console.warn('[news] search failed:', e.message); return { status: 'retry' }; }
+  if (!sources.length) return { status: 'skipped', skip_reason: 'no_sources', queries };
   // 3) 작성: 원문에서 확인한 내용만
+  const question = line(plan.json.question, 100);
   const srcText = sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url})\n원문: ${s.text}`).join('\n\n');
-  const art = await askJson(WRITE_PROMPT, `질문: ${line(plan.json.question, 100)}\n관심사가 드러난 말(요약): ${line(plan.json.evidence, 60)}\n\n출처 원문:\n${srcText}`, { maxTokens: 1200, temperature: 0.4, timeoutMs: 40000, title: 'Haru Hanjang Newspaper' });
-  if (!art.ok) return 'retry';
+  const art = await askJson(WRITE_PROMPT, `질문: ${question}\n관심사가 드러난 말(요약): ${line(plan.json.evidence, 60)}\n\n출처 원문:\n${srcText}`, { maxTokens: 1200, temperature: 0.4, timeoutMs: 40000, title: 'Haru Hanjang Newspaper' });
+  if (!art.ok) return { status: 'retry' };
   const used = (Array.isArray(art.json.used) ? art.json.used : []).map(Number).filter((n) => n >= 1 && n <= sources.length);
   const title = line(art.json.title, 60), body = String(art.json.body || '').trim().slice(0, 1400), reason = line(art.json.reason, 120);
-  if (!title || !body || !used.length) { await save({ status: 'skipped', skip_reason: 'no_grounded_article' }); return 'skipped'; }
-  await save({ status: 'published', title, body, reason, question: line(plan.json.question, 100), sources: [...new Set(used)].map((n) => ({ title: sources[n - 1].title, url: sources[n - 1].url })) });
-  return 'published';
+  if (!title || !body || !used.length) return { status: 'skipped', skip_reason: 'no_grounded_article', queries };
+  return { status: 'published', title, body, reason, question, queries, sources: [...new Set(used)].map((n) => ({ title: sources[n - 1].title, url: sources[n - 1].url })) };
+}
+
+/** 한 사람의 한 주 기사를 만들어 'published' | 'skipped' 줄로 저장 ('retry'는 저장하지 않음) */
+async function buildIssue(user, weekStart) {
+  const db = getDb();
+  const turns = await db.all("SELECT question, answer FROM chat_turns WHERE user_id = ? AND week_start = ? AND status = 'answered' ORDER BY day, seq", [user.id, weekStart]);
+  const d = await draftIssue(turns, user.nickname);
+  if (d.status === 'retry') return 'retry';
+  await db.run(`INSERT INTO newspapers (id, user_id, week_start, issue_date, publish_at, status, skip_reason, title, body, reason, question, sources, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`, [crypto.randomUUID(), user.id, weekStart, issueDateOf(weekStart), new Date(publishAtOf(weekStart)).toISOString(),
+    d.status, d.skip_reason || null, d.title || null, d.body || null, d.reason || null, d.question || null, d.sources ? JSON.stringify(d.sources) : null, nowIso()]);
+  return d.status;
 }
 
 /** 아직 기사를 만들지 않은 지난 주들 (주가 끝난 뒤, 대화가 있는 주) */
