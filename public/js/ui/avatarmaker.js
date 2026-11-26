@@ -1,12 +1,21 @@
 // 홈의 '내 아바타 만들기 / 아바타 꾸미기' — 가운데 전신 미리보기, 아래에서 머리·맨투맨 색·하의를 고르면 바로 반영
 import { HAIRS, TOPS, BOTTOMS, avatarOf } from '../shared/avatar.js';
-import { avatarSprite, paintPreview as paintFull, baseFrontReady, hairThumb, GRID_W, GRID_H } from '../render/avatar.js';
+import { avatarSprite, avatarHi, paintPreview as paintFull, baseFrontReady, hairThumb, GRID_W, GRID_H } from '../render/avatar.js';
 
 /** 그림 일부(칸 단위 영역)를 확대해 그린 캔버스 */
 function crop(avatar, { x = 0, y = 0, w = GRID_W, h = GRID_H }, scale, opts) {
   const cv = document.createElement('canvas'); cv.width = w * scale; cv.height = h * scale;
   const c = cv.getContext('2d'); c.imageSmoothingEnabled = false;
   c.drawImage(avatarSprite(avatar, opts), x, y, w, h, 0, 0, cv.width, cv.height);
+  return cv;
+}
+
+/** 하의 고르기 버튼용: 밑단 아래(하의·다리·신발) 부분 */
+function bottomThumb(avatar, w = 84, h = 62) {
+  const hi = avatarHi(avatar); if (!hi) return null;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const c = cv.getContext('2d'); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  c.drawImage(hi, 30, 300, 180, 160, 0, 0, w, h); // 틀의 x 30~210, y 300~460 (밑단~신발)
   return cv;
 }
 
@@ -53,7 +62,7 @@ export function openAvatarMaker(root, { avatar, first = false, onSave, onCancel 
   function render() {
     const hair = $('.av-hair'); hair.innerHTML = '';
     HAIRS.forEach((name, i) => {
-      const b = option(name, cur.hair === i, hairThumb(i) || crop({ ...cur, hair: i }, { x: 0, y: 0, w: GRID_W, h: 23 }, 3)); // 머리 모양만 다른 실제 그림
+      const b = option(name, cur.hair === i, hairThumb(i, 60, 66, cur.top) || crop({ ...cur, hair: i }, { x: 0, y: 0, w: GRID_W, h: 23 }, 3)); // 머리 모양만 다른 실제 그림
       b.onclick = () => { cur = { ...cur, hair: i }; render(); }; // 상의 색·하의는 그대로
       hair.append(b);
     });
@@ -66,7 +75,7 @@ export function openAvatarMaker(root, { avatar, first = false, onSave, onCancel 
     });
     const bottom = $('.av-bottom'); bottom.innerHTML = '';
     BOTTOMS.forEach((name, i) => {
-      const b = option(name, cur.bottom === i, crop({ ...cur, bottom: i }, { x: 2, y: 24, w: 16, h: 12 }, 4));
+      const b = option(name, cur.bottom === i, bottomThumb({ ...cur, bottom: i }) || crop({ ...cur, bottom: i }, { x: 2, y: 24, w: 16, h: 12 }, 4));
       b.onclick = () => { cur = { ...cur, bottom: i }; render(); }; // 치마를 골라도 상의 색은 그대로
       bottom.append(b);
     });

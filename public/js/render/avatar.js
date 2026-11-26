@@ -1,29 +1,78 @@
-// 레트로 2D 도트 아바타 — 머리 6 × 맨투맨 6색 × 하의 2 조합
-// 한 장은 20×36칸. 장면에서는 칸 하나를 0.5(320×180 좌표)로 그려 키 18 = 예전 아바타와 같은 크기
-// 머리·상의·하의를 같은 몸 기준점(발 = 아래 가운데)에 겹쳐 그리고, 바깥 윤곽선은 실루엣을 따라 자동으로 두름
+// 아바타 — 머리 6 × 맨투맨 6색 × 하의 2 = 72가지
+// 보이는 그림은 확정한 그림체의 층 그림(아래 avatarHi). 아래쪽의 20×36칸 도트 그림은 층 그림을 받기 전 잠깐만 쓰는 대신 그림
 import { TOPS, avatarOf } from '../shared/avatar.js';
 
 export const GRID_W = 20, GRID_H = 36;
 
-// 정면 그림(연보라 맨투맨 + 긴바지): 확정한 기본 아바타의 얼굴·몸·옷에 머리 시안 6종의 머리만 바꿔 얹은 투명 PNG 6장
-// (front-h0~5.png, 원본 비율 그대로). 지금 단계에서는 연보라+긴바지의 '정면으로 서 있기'에만 씀 — 다른 색·치마·걷기·앉기는 다음 단계
-const FRONTS = Array.from({ length: 6 }, (_, i) => { const im = new Image(); im.src = `/img/avatar/front-h${i}.png?v=1`; return im; });
-export const baseFrontReady = Promise.all(FRONTS.map((im) => im.decode().catch(() => {}))).then(() => true);
-const frontOf = (a, { pose = 'stand', back = false } = {}) => {
-  if (pose !== 'stand' || back || a.top !== 0 || a.bottom !== 0) return null;
-  const im = FRONTS[a.hair]; return im && im.complete && im.naturalWidth > 0 ? im : null;
-};
-/** 머리 고르기 버튼용: i번 머리 그림의 머리·어깨 부분 (그림을 아직 못 받았으면 null) */
-export function hairThumb(i, w = 60, h = 66) {
-  const im = FRONTS[i]; if (!im?.complete || !im.naturalWidth) return null;
-  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-  const c = cv.getContext('2d'); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
-  const k = w / 230; // 가로 230px 폭을 버튼 폭에 맞춤. 발바닥을 같은 높이(443px 기준)에 두어 몸 크기·위치가 6개 모두 같게, 위쪽(머리)만 보임
-  c.drawImage(im, (w - im.naturalWidth * k) / 2, (443 - im.naturalHeight) * k + 2, im.naturalWidth * k, im.naturalHeight * k);
+// ── 확정한 아바타 그림체 (사용자 시안에서 분리한 투명 PNG를 층으로 나눠 앱에서 겹침) ──
+// 모든 층은 같은 틀(가로 240 × 세로 460px, 발바닥 = 맨 아래 줄, 몸 가운데 = x 120)
+// - upper-{front,back}-h0~5 : 머리 6종 + 상체(연보라 맨투맨·속옷 단·손). 뒷모습은 얼굴 자리를 머리카락으로 채운 그림
+// - lower-{pants,skirt}-{stand,walk0,walk1,sit} : 하의·다리·크림색 운동화 (걷기 = 한 발씩 들기, 앉기 = 허벅지를 앞으로 접음)
+// - colors.json : 연보라의 명암 단계별 색 → 크림·살구·인디핑크·하늘색·네이비 (색 시안의 같은 자리 픽셀에서 뽑음)
+// 키: 몸 기준 그림 높이 433px = 18 (예전 아바타와 같은 키, 장소 배율은 stage.js에서)
+const FW = 240, FH = 460, REF_H = 433, HIP = FH - REF_H + 318; // HIP: 엉덩이(좌판에 닿는) 줄
+const K = 18 / REF_H;
+const img = (n) => { const im = new Image(); im.src = `/img/avatar/${n}.png?v=2`; return im; };
+const UPPER = { front: Array.from({ length: 6 }, (_, i) => img(`upper-front-h${i}`)), back: Array.from({ length: 6 }, (_, i) => img(`upper-back-h${i}`)) };
+const LOWER = {};
+for (const b of ['pants', 'skirt']) for (const p of ['stand', 'walk0', 'walk1', 'sit']) LOWER[`${b}-${p}`] = img(`lower-${b}-${p}`);
+let LUT = null; // 연보라 색(0xRRGGBB) → [크림, 살구, 인디핑크, 하늘색, 네이비]
+const lutReady = fetch('/img/avatar/colors.json?v=2').then((r) => r.json()).then((j) => {
+  LUT = new Map(Object.entries(j.map).map(([k, v]) => [parseInt(k, 16), v.map((h) => parseInt(h, 16))]));
+}).catch(() => {});
+const allImgs = [...UPPER.front, ...UPPER.back, ...Object.values(LOWER)];
+export const baseFrontReady = Promise.all([lutReady, ...allImgs.map((im) => im.decode().catch(() => {}))]).then(() => true);
+const ok = (im) => im && im.complete && im.naturalWidth > 0;
+
+const upperCache = new Map();
+/** 머리 hair의 앞/뒷모습 상체를 맨투맨 색 top으로 (연보라 픽셀만 색 대응표로 바꿈) */
+function upperOf(hair, back, top) {
+  const key = `${hair}|${back ? 1 : 0}|${top}`;
+  if (upperCache.has(key)) return upperCache.get(key);
+  const src = (back ? UPPER.back : UPPER.front)[hair];
+  if (!ok(src) || (top && !LUT)) return null;
+  const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH;
+  const c = cv.getContext('2d'); c.drawImage(src, 0, 0);
+  if (top) {
+    const d = c.getImageData(0, 0, FW, FH), px = d.data;
+    for (let i = 0; i < px.length; i += 4) {
+      if (!px[i + 3]) continue;
+      const to = LUT.get((px[i] << 16) | (px[i + 1] << 8) | px[i + 2]);
+      if (to) { const v = to[top - 1]; px[i] = v >> 16; px[i + 1] = (v >> 8) & 255; px[i + 2] = v & 255; }
+    }
+    c.putImageData(d, 0, 0);
+  }
+  upperCache.set(key, cv);
   return cv;
 }
-// 그림마다 머리 높이가 달라도 몸(깃~발)의 크기는 같게: 기준 = 짧은 가르마 그림 높이 433px → 키 18
-const FRONT_REF_H = 433;
+
+const hiCache = new Map();
+/** 조합·자세별 완성 그림 (240×460). 그림을 아직 못 받았으면 null → 예전 도트 그림으로 대신 */
+export function avatarHi(avatar, { pose = 'stand', frame = 0, back = false } = {}) {
+  const a = avatarOf(avatar);
+  const sit = pose === 'sit', f = pose === 'walk' ? frame % 2 : 0;
+  const key = `${a.hair}${a.top}${a.bottom}|${pose}|${f}|${back ? 1 : 0}`;
+  if (hiCache.has(key)) return hiCache.get(key);
+  const lower = LOWER[`${a.bottom ? 'skirt' : 'pants'}-${sit ? (back ? 'stand' : 'sit') : pose === 'walk' ? `walk${f}` : 'stand'}`];
+  const up = upperOf(a.hair, back, a.top);
+  if (!ok(lower) || !up) return null;
+  const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH;
+  const c = cv.getContext('2d');
+  if (sit && back) c.drawImage(lower, 0, 0, FW, HIP + 8, 0, 0, FW, HIP + 8); // 방 의자: 다리는 의자에 가려 엉덩이까지만
+  else c.drawImage(lower, 0, 0);
+  c.drawImage(up, 0, 0);
+  hiCache.set(key, cv);
+  return cv;
+}
+
+/** 머리 고르기 버튼용: i번 머리의 머리·어깨 부분 (그림을 아직 못 받았으면 null) */
+export function hairThumb(i, w = 60, h = 66, top = 0) {
+  const up = upperOf(i, false, top); if (!up) return null;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const c = cv.getContext('2d'); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  const k = w / 230; c.drawImage(up, (w - FW * k) / 2, 2 - (FH - 443) * k, FW * k, FH * k);
+  return cv;
+}
 
 const FIXED = {
   O: '#2a1c19', // 윤곽선
@@ -146,12 +195,12 @@ export function drawAvatar(c, x, y, avatar, { pose = 'stand', frame = 0, dir = 0
   c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(x - 4, y - 1, 8, 1.5);
   if (me && !sit) { c.fillStyle = 'rgba(255,207,110,.55)'; c.fillRect(x - 5, y + 0.5, 10, 1); }
   const prev = c.imageSmoothingEnabled;
-  const front = frontOf(avatarOf(avatar), { pose, back });
-  if (front) {
-    // 키 18(예전 아바타와 같은 키), 폭은 원본 비율 그대로 (433px → 18로 크게 줄이므로 부드럽게 축소). 발바닥 = 그림 맨 아래
-    const k = 18 / FRONT_REF_H, h = front.naturalHeight * k, w = front.naturalWidth * k;
-    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
-    c.drawImage(front, x - w / 2, y - h, w, h);
+  const hi = avatarHi(avatar, { pose, frame, back });
+  if (hi) {
+    // 서 있기·걷기: 발바닥 = 그림 맨 아래 / 앉기: 엉덩이 줄이 좌판(y - 1.5)에 닿게 (예전 도트 아바타와 같은 자리)
+    const top = sit ? y - 1.5 - HIP * K : y - FH * K;
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; // 큰 그림을 작게 줄이므로 부드럽게
+    c.drawImage(hi, x - (FW / 2) * K, top, FW * K, FH * K);
   } else {
     c.imageSmoothingEnabled = false;
     c.drawImage(avatarSprite(avatar, { pose, frame, dir, back }), x - GRID_W / 4, y - (sit ? 15 : 18), GRID_W / 2, GRID_H / 2);
@@ -159,16 +208,16 @@ export function drawAvatar(c, x, y, avatar, { pose = 'stand', frame = 0, dir = 0
   c.imageSmoothingEnabled = prev;
 }
 
-/** 홈 미리보기: 기본 조합의 정면이면 원본 PNG, 아니면 도트 그림 — 캔버스 가운데·아래(발)에 맞춰 그림 */
+/** 홈 미리보기: 확정한 그림체로 전신 (앞·걷기·뒤) — 캔버스 가운데·아래(발)에 맞춤 */
 export function paintPreview(canvas, avatar, opts = {}) {
   const a = avatarOf(avatar), c = canvas.getContext('2d');
   c.clearRect(0, 0, canvas.width, canvas.height);
-  const front = frontOf(a, opts);
-  if (front) {
-    const k = canvas.height * 0.93 / 443, h = front.naturalHeight * k, w = front.naturalWidth * k, foot = canvas.height * 0.95; // 가장 높은 머리(곱슬)도 들어가게
-    c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(canvas.width / 2, foot - 4, 46, 8, 0, 0, Math.PI * 2); c.fill(); // 발밑 그림자 (신발 아래)
+  const hi = avatarHi(a, opts);
+  if (hi) {
+    const k = canvas.height * 0.93 / 443, foot = canvas.height * 0.95; // 가장 높은 머리(곱슬)도 들어가게
+    c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(canvas.width / 2, foot - 4, 46 * canvas.width / 250, 8 * canvas.height / 450, 0, 0, Math.PI * 2); c.fill();
     c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
-    c.drawImage(front, (canvas.width - w) / 2, foot - h, w, h);
+    c.drawImage(hi, canvas.width / 2 - (FW / 2) * k, foot - FH * k, FW * k, FH * k);
     return 'png';
   }
   const k = Math.min(canvas.width / GRID_W, canvas.height / GRID_H);
