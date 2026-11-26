@@ -13,23 +13,23 @@ export const GRID_W = 20, GRID_H = 36;
 const FW = 240, FH = 460, REF_H = 433, HIP = FH - REF_H + 318; // HIP: 엉덩이(좌판에 닿는) 줄
 const K = 18 / REF_H;
 const img = (n) => { const im = new Image(); im.src = `/img/avatar/${n}.png?v=2`; return im; };
-const UPPER = { front: Array.from({ length: 6 }, (_, i) => img(`upper-front-h${i}`)), back: Array.from({ length: 6 }, (_, i) => img(`upper-back-h${i}`)) };
+const UPPER = { front: Array.from({ length: 6 }, (_, i) => img(`upper-front-h${i}`)), back: Array.from({ length: 6 }, (_, i) => img(`upper-back-h${i}`)), side: Array.from({ length: 6 }, (_, i) => img(`upper-side-h${i}`)) };
 const LOWER = {};
-for (const b of ['pants', 'skirt']) for (const p of ['stand', 'walk0', 'walk1', 'sit']) LOWER[`${b}-${p}`] = img(`lower-${b}-${p}`);
+for (const b of ['pants', 'skirt']) for (const p of ['stand', 'walk0', 'walk1', 'sit', 'side0', 'side1']) LOWER[`${b}-${p}`] = img(`lower-${b}-${p}`);
 let LUT = null; // 연보라 색(0xRRGGBB) → [크림, 살구, 인디핑크, 하늘색, 네이비]
 const lutReady = fetch('/img/avatar/colors.json?v=2').then((r) => r.json()).then((j) => {
   LUT = new Map(Object.entries(j.map).map(([k, v]) => [parseInt(k, 16), v.map((h) => parseInt(h, 16))]));
 }).catch(() => {});
-const allImgs = [...UPPER.front, ...UPPER.back, ...Object.values(LOWER)];
+const allImgs = [...UPPER.front, ...UPPER.back, ...UPPER.side, ...Object.values(LOWER)];
 export const baseFrontReady = Promise.all([lutReady, ...allImgs.map((im) => im.decode().catch(() => {}))]).then(() => true);
 const ok = (im) => im && im.complete && im.naturalWidth > 0;
 
 const upperCache = new Map();
 /** 머리 hair의 앞/뒷모습 상체를 맨투맨 색 top으로 (연보라 픽셀만 색 대응표로 바꿈) */
-function upperOf(hair, back, top) {
-  const key = `${hair}|${back ? 1 : 0}|${top}`;
+function upperOf(hair, back, top, side = false) {
+  const key = `${hair}|${back ? 1 : 0}|${side ? 1 : 0}|${top}`;
   if (upperCache.has(key)) return upperCache.get(key);
-  const src = (back ? UPPER.back : UPPER.front)[hair];
+  const src = (side ? UPPER.side : back ? UPPER.back : UPPER.front)[hair];
   if (!ok(src) || (top && !LUT)) return null;
   const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH;
   const c = cv.getContext('2d'); c.drawImage(src, 0, 0);
@@ -48,13 +48,14 @@ function upperOf(hair, back, top) {
 
 const hiCache = new Map();
 /** 조합·자세별 완성 그림 (240×460). 그림을 아직 못 받았으면 null → 예전 도트 그림으로 대신 */
-export function avatarHi(avatar, { pose = 'stand', frame = 0, back = false } = {}) {
+export function avatarHi(avatar, { pose = 'stand', frame = 0, back = false, dir = 0 } = {}) {
   const a = avatarOf(avatar);
   const sit = pose === 'sit', f = pose === 'walk' ? frame % 2 : 0;
-  const key = `${a.hair}${a.top}${a.bottom}|${pose}|${f}|${back ? 1 : 0}`;
+  const side = pose === 'walk' && !back && dir !== 0; // 옆으로 걸을 때: 걷는 쪽을 비스듬히 본 옆모습 (오른쪽 그림, 왼쪽은 그릴 때 뒤집음)
+  const key = `${a.hair}${a.top}${a.bottom}|${pose}|${f}|${back ? 1 : 0}|${side ? 1 : 0}`;
   if (hiCache.has(key)) return hiCache.get(key);
-  const lower = LOWER[`${a.bottom ? 'skirt' : 'pants'}-${sit ? (back ? 'stand' : 'sit') : pose === 'walk' ? `walk${f}` : 'stand'}`];
-  const up = upperOf(a.hair, back, a.top);
+  const lower = LOWER[`${a.bottom ? 'skirt' : 'pants'}-${sit ? (back ? 'stand' : 'sit') : side ? `side${f}` : pose === 'walk' ? `walk${f}` : 'stand'}`];
+  const up = upperOf(a.hair, back, a.top, side);
   if (!ok(lower) || !up) return null;
   const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH;
   const c = cv.getContext('2d');
@@ -195,12 +196,14 @@ export function drawAvatar(c, x, y, avatar, { pose = 'stand', frame = 0, dir = 0
   c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(x - 4, y - 1, 8, 1.5);
   if (me && !sit) { c.fillStyle = 'rgba(255,207,110,.55)'; c.fillRect(x - 5, y + 0.5, 10, 1); }
   const prev = c.imageSmoothingEnabled;
-  const hi = avatarHi(avatar, { pose, frame, back });
+  const hi = avatarHi(avatar, { pose, frame, back, dir });
   if (hi) {
     // 서 있기·걷기: 발바닥 = 그림 맨 아래 / 앉기: 엉덩이 줄이 좌판(y - 1.5)에 닿게 (예전 도트 아바타와 같은 자리)
     const top = sit ? y - 1.5 - HIP * K : y - FH * K;
     c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; // 큰 그림을 작게 줄이므로 부드럽게
-    c.drawImage(hi, x - (FW / 2) * K, top, FW * K, FH * K);
+    if (pose === 'walk' && !back && dir < 0) { // 왼쪽으로 걸음: 오른쪽 옆모습을 발밑 기준으로 좌우 뒤집음
+      c.save(); c.translate(x, 0); c.scale(-1, 1); c.drawImage(hi, -(FW / 2) * K, top, FW * K, FH * K); c.restore();
+    } else c.drawImage(hi, x - (FW / 2) * K, top, FW * K, FH * K);
   } else {
     c.imageSmoothingEnabled = false;
     c.drawImage(avatarSprite(avatar, { pose, frame, dir, back }), x - GRID_W / 4, y - (sit ? 15 : 18), GRID_W / 2, GRID_H / 2);

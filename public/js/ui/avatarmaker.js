@@ -55,7 +55,7 @@ export function openAvatarMaker(root, { avatar, first = false, onSave, onCancel 
   };
 
   function paintPreview() {
-    const opts = pose === 1 ? { pose: 'walk', frame: Math.floor(Date.now() / 320) % 2 } : pose === 2 ? { back: true } : {};
+    const opts = pose === 1 ? { pose: 'walk', frame: Math.floor(Date.now() / 320) % 2, dir: 1 } : pose === 2 ? { back: true } : {}; // 걷기 = 옆으로 걷는 모습
     paintFull(preview, cur, opts);
     preview.setAttribute('aria-label', `미리보기: ${HAIRS[cur.hair]}, ${TOPS[cur.top].name} 맨투맨, ${BOTTOMS[cur.bottom]}`);
   }
