@@ -5,6 +5,13 @@ import { TOPS, avatarOf } from '../shared/avatar.js';
 
 export const GRID_W = 20, GRID_H = 36;
 
+// 기본 아바타(연보라 맨투맨)의 정면 그림: 사용자 시안에서 한 명을 분리한 투명 PNG (원본 비율 183×448 그대로)
+// 지금 단계에서는 기본 조합의 '정면으로 서 있기'에만 씀 (걷기·앉기·다른 조합은 다음 단계에서 교체)
+export const BASE_FRONT = new Image();
+BASE_FRONT.src = '/img/avatar/base-front.png?v=1';
+export const baseFrontReady = BASE_FRONT.decode().then(() => true, () => false);
+const usesBaseFront = (a, { pose = 'stand', back = false } = {}) => pose === 'stand' && !back && a.hair === 0 && a.top === 0 && a.bottom === 0 && BASE_FRONT.complete && BASE_FRONT.naturalWidth > 0;
+
 const FIXED = {
   O: '#2a1c19', // 윤곽선
   K: '#f7d2ad', k: '#e3b08b', // 피부
@@ -125,9 +132,34 @@ export function drawAvatar(c, x, y, avatar, { pose = 'stand', frame = 0, dir = 0
   const sit = pose === 'sit';
   c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(x - 4, y - 1, 8, 1.5);
   if (me && !sit) { c.fillStyle = 'rgba(255,207,110,.55)'; c.fillRect(x - 5, y + 0.5, 10, 1); }
-  const prev = c.imageSmoothingEnabled; c.imageSmoothingEnabled = false;
-  c.drawImage(avatarSprite(avatar, { pose, frame, dir, back }), x - GRID_W / 4, y - (sit ? 15 : 18), GRID_W / 2, GRID_H / 2);
+  const prev = c.imageSmoothingEnabled;
+  if (usesBaseFront(avatarOf(avatar), { pose, back })) {
+    // 키 18(예전 아바타와 같은 키), 폭은 원본 비율 그대로 (448px → 18이라 크게 줄이므로 부드럽게 축소)
+    const h = 18, w = h * BASE_FRONT.naturalWidth / BASE_FRONT.naturalHeight;
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+    c.drawImage(BASE_FRONT, x - w / 2, y - h, w, h);
+  } else {
+    c.imageSmoothingEnabled = false;
+    c.drawImage(avatarSprite(avatar, { pose, frame, dir, back }), x - GRID_W / 4, y - (sit ? 15 : 18), GRID_W / 2, GRID_H / 2);
+  }
   c.imageSmoothingEnabled = prev;
+}
+
+/** 홈 미리보기: 기본 조합의 정면이면 원본 PNG, 아니면 도트 그림 — 캔버스 가운데·아래(발)에 맞춰 그림 */
+export function paintPreview(canvas, avatar, opts = {}) {
+  const a = avatarOf(avatar), c = canvas.getContext('2d');
+  c.clearRect(0, 0, canvas.width, canvas.height);
+  if (usesBaseFront(a, opts)) {
+    const h = canvas.height * 0.95, w = h * BASE_FRONT.naturalWidth / BASE_FRONT.naturalHeight;
+    c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(canvas.width / 2, h - h * 0.012, w * 0.42, h * 0.022, 0, 0, Math.PI * 2); c.fill(); // 발밑 그림자 (신발 아래)
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+    c.drawImage(BASE_FRONT, (canvas.width - w) / 2, 0, w, h);
+    return 'png';
+  }
+  const k = Math.min(canvas.width / GRID_W, canvas.height / GRID_H);
+  c.imageSmoothingEnabled = false;
+  c.drawImage(avatarSprite(a, opts), (canvas.width - GRID_W * k) / 2, canvas.height - GRID_H * k, GRID_W * k, GRID_H * k);
+  return 'sprite';
 }
 
 /** 홈 미리보기·선택 버튼용: 확대한 전신 그림 (칸 하나 = scale px) */

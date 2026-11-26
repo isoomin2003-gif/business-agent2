@@ -1,6 +1,6 @@
 // 홈의 '내 아바타 만들기 / 아바타 꾸미기' — 가운데 전신 미리보기, 아래에서 머리·맨투맨 색·하의를 고르면 바로 반영
 import { HAIRS, TOPS, BOTTOMS, avatarOf } from '../shared/avatar.js';
-import { avatarSprite, GRID_W, GRID_H } from '../render/avatar.js';
+import { avatarSprite, paintPreview as paintFull, baseFrontReady, GRID_W, GRID_H } from '../render/avatar.js';
 
 /** 그림 일부(칸 단위 영역)를 확대해 그린 캔버스 */
 function crop(avatar, { x = 0, y = 0, w = GRID_W, h = GRID_H }, scale, opts) {
@@ -12,9 +12,9 @@ function crop(avatar, { x = 0, y = 0, w = GRID_W, h = GRID_H }, scale, opts) {
 
 /** 홈 화면 작은 아바타 (닉네임 옆) */
 export function paintMini(canvas, avatar) {
-  canvas.width = GRID_W; canvas.height = GRID_H;
-  const c = canvas.getContext('2d'); c.clearRect(0, 0, GRID_W, GRID_H);
-  c.drawImage(avatarSprite(avatar), 0, 0);
+  canvas.width = 60; canvas.height = 108;
+  paintFull(canvas, avatar);
+  baseFrontReady.then(() => paintFull(canvas, avatar)); // 그림을 다 받은 뒤 다시
 }
 
 /**
@@ -27,7 +27,7 @@ export function openAvatarMaker(root, { avatar, first = false, onSave, onCancel 
   root.innerHTML = `
     <h2 id="av-title">${first ? '내 아바타 만들기' : '아바타 꾸미기'}</h2>
     <p class="av-sub">고른 모습 그대로 내 방·옥상·공원에 들어가요. 72가지 조합 모두 무료예요.</p>
-    <div class="av-stage"><canvas class="av-preview" width="${GRID_W}" height="${GRID_H}" role="img"></canvas>
+    <div class="av-stage"><canvas class="av-preview" width="250" height="450" role="img"></canvas>
       <div class="av-turn" role="group" aria-label="미리보기 방향"><button type="button" class="chip on" data-pose="0">앞</button><button type="button" class="chip" data-pose="1">걷기</button><button type="button" class="chip" data-pose="2">뒤</button></div></div>
     <div class="av-group"><h3>머리</h3><div class="av-opts av-hair" role="radiogroup" aria-label="머리"></div></div>
     <div class="av-group"><h3>맨투맨 색</h3><div class="av-opts av-top" role="radiogroup" aria-label="맨투맨 색"></div></div>
@@ -47,8 +47,7 @@ export function openAvatarMaker(root, { avatar, first = false, onSave, onCancel 
 
   function paintPreview() {
     const opts = pose === 1 ? { pose: 'walk', frame: Math.floor(Date.now() / 320) % 2 } : pose === 2 ? { back: true } : {};
-    const c = preview.getContext('2d'); c.clearRect(0, 0, GRID_W, GRID_H);
-    c.drawImage(avatarSprite(cur, opts), 0, 0);
+    paintFull(preview, cur, opts);
     preview.setAttribute('aria-label', `미리보기: ${HAIRS[cur.hair]}, ${TOPS[cur.top].name} 맨투맨, ${BOTTOMS[cur.bottom]}`);
   }
   function render() {
@@ -83,6 +82,7 @@ export function openAvatarMaker(root, { avatar, first = false, onSave, onCancel 
   const cancel = $('[data-cancel]');
   if (cancel) cancel.onclick = () => { clearInterval(timer); onCancel?.(); };
   render();
+  baseFrontReady.then(() => { if (root.isConnected) paintPreview(); });
   root.hidden = false;
   $('[data-save]').focus({ preventScroll: true });
   return { close: () => { clearInterval(timer); root.hidden = true; root.innerHTML = ''; } };
