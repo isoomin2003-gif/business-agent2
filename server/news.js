@@ -32,6 +32,7 @@ const PLAN_PROMPT = `[신문-계획] 너는 개인 주간신문의 편집자야.
 
 const WRITE_PROMPT = `[신문-기사] 너는 개인 주간신문의 기자야. 아래 '출처 원문'에서 확인한 내용만으로 질문에 답하는 짧은 기사를 써.
 - 출처 원문에 없는 사실, 숫자, 인물은 쓰지 마. 확실하지 않으면 쓰지 마.
+- 출처 원문이 영어여도 기사는 쉬운 우리말로 옮겨 써.
 - 쉽고 따뜻한 한국어. 본문은 3~4문단, 모두 합쳐 550자 이내. 문단 사이는 빈 줄.
 - 제목은 25자 이내.
 - reason: 사용자가 했던 말이 이 기사로 이어졌다는 걸 알아볼 수 있게 한 줄(60자 이내). 예) "지난주 호숫가 야경 사진이 번졌다는 이야기에서 시작했어요." 사용자 문장을 길게 그대로 옮기지 마.
@@ -79,15 +80,16 @@ export async function draftIssue(turns, nickname) {
   if (!plan.ok) return { status: 'retry', step: 'plan', why: plan.status, raw: plan.raw };
   if (plan.json.skip || !plan.json.question) return { status: 'skipped', skip_reason: `vague: ${line(plan.json.reason, 80)}` };
   const answers = turns.map((t) => t.answer);
+  // 한국어 검색어 최대 2개 + 영어 1개 (한국어 문서가 없거나 짧은 주제도 영어 위키백과에서 찾도록)
   const queries = [
-    ...(Array.isArray(plan.json.queries_ko) ? plan.json.queries_ko : []).map((q) => ['ko', cleanQuery(q, answers, nickname)]),
+    ...(Array.isArray(plan.json.queries_ko) ? plan.json.queries_ko : []).map((q) => ['ko', cleanQuery(q, answers, nickname)]).filter(([, q]) => q).slice(0, 2),
     ['en', cleanQuery(plan.json.query_en, answers, nickname)],
-  ].filter(([, q]) => q).slice(0, 3);
+  ].filter(([, q]) => q);
   // 2) 검색 (검색어만 외부로)
   const sources = [];
   try {
     for (const [lang, q] of queries) {
-      for (const s of await wikiSearch(lang, q)) if (!sources.some((x) => x.url === s.url) && sources.length < 4) sources.push(s);
+      for (const s of await wikiSearch(lang, q)) if (!sources.some((x) => x.url === s.url) && sources.length < 5) sources.push(s); // 한국어 최대 4 + 영어 최소 1
     }
   } catch (e) { console.warn('[news] search failed:', e.message); return { status: 'retry', step: 'search', why: e.message, queries }; }
   if (!sources.length) return { status: 'skipped', skip_reason: 'no_sources', queries };
