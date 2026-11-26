@@ -3,8 +3,9 @@
 // - 비어 있는 달은 표지와 '아직 이달에 발행된 신문이 없어요'
 import { api, esc, koDate } from '../api.js';
 import { openModal, toast } from './modal.js';
+import { V } from '../render/backdrops.js';
 
-const IMG = '/img/scenes/newsstand.webp';
+const IMG = `/img/scenes/newsstand.webp?v=${V}`;
 const W = 1672, H = 941;
 const COLS = [[245, 555], [578, 880], [900, 1205], [1225, 1530]];
 const ROWS = [[70, 315], [345, 575], [610, 860]];

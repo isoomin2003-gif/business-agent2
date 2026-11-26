@@ -198,7 +198,8 @@ if (process.env.ALLOW_TEST_CLOCK === '1') {
 app.use(express.static(PATHS.public, {
   extensions: ['html'],
   setHeaders(res, filePath) {
-    if (/\.(html|js|css)$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
+    // 장면 그림(배경·책장·가판대)도 바뀔 수 있어 매번 확인 (바뀌지 않았으면 304로 빠르게)
+    if (/\.(html|js|css)$/.test(filePath) || /[\\/]img[\\/]scenes[\\/]/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
     else res.setHeader('Cache-Control', 'public, max-age=86400');
   },
 }));

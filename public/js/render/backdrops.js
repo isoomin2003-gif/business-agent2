@@ -3,7 +3,9 @@
 export const SCALE = 4; // 캔버스 내부 해상도 = 320×180 × 4 (그림을 선명하게, 아바타 픽셀은 4의 배수로 또렷하게)
 export const W = 320, H = 180;
 
-const files = { room: '/img/scenes/room.webp', rooftop: '/img/scenes/rooftop.webp', park: '/img/scenes/park.webp' };
+// 그림을 바꾸면 V를 올림: 예전에 받아 둔 그림(브라우저 캐시) 대신 새 그림을 바로 받음
+export const V = '20261126';
+const files = { room: `/img/scenes/room.webp?v=${V}`, rooftop: `/img/scenes/rooftop.webp?v=${V}`, park: `/img/scenes/park.webp?v=${V}` };
 export const IMGS = {};
 const loads = [];
 for (const [id, src] of Object.entries(files)) {
@@ -14,9 +16,9 @@ for (const [id, src] of Object.entries(files)) {
   loads.push(img.decode ? img.decode().catch(() => new Promise((r) => { img.onload = r; img.onerror = r; })) : new Promise((r) => { img.onload = r; img.onerror = r; }));
 }
 // 방 책장의 책 12권(한 단에 4권): 기록이 생길 때마다 하나씩 색을 입힌 그림(책등 윤곽 밖은 투명)과 위치
-const booksImg = new Image(); booksImg.src = '/img/scenes/room-books.png';
+const booksImg = new Image(); booksImg.src = `/img/scenes/room-books.png?v=${V}`;
 let booksMeta = null;
-loads.push(booksImg.decode().catch(() => {}), fetch('/img/scenes/room-books.json').then((r) => r.json()).then((j) => { booksMeta = j; }).catch(() => {}));
+loads.push(booksImg.decode().catch(() => {}), fetch(`/img/scenes/room-books.json?v=${V}`).then((r) => r.json()).then((j) => { booksMeta = j; }).catch(() => {}));
 export const BOOK_SLOTS = () => booksMeta?.books.length || 0;
 /** 앞에서부터 n권의 책등에 색 (선반 위 칸부터 왼쪽→오른쪽) */
 export function drawColoredBooks(c, n) {
