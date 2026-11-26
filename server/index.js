@@ -2,7 +2,7 @@ import http from 'node:http';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { config, PATHS } from './config.js';
-import { initDb } from './db.js';
+import { initDb, getDb } from './db.js';
 import { initStorage } from './storage.js';
 import { createGuest, setGuestCookie, clearSessionCookie, userFromToken, COOKIE, requireAdmin, wrap, cleanNickname, randomNickname, renameUser, requireUser, registerAccount, loginAccount, endSession, checkPassword, accountKey, saveAvatar } from './auth.js';
 import { validAvatar } from '../public/js/shared/avatar.js';
