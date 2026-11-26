@@ -1,6 +1,6 @@
 // 홈의 '내 아바타 만들기 / 아바타 꾸미기' — 가운데 전신 미리보기, 아래에서 머리·맨투맨 색·하의를 고르면 바로 반영
 import { HAIRS, TOPS, BOTTOMS, avatarOf } from '../shared/avatar.js';
-import { avatarSprite, paintPreview as paintFull, baseFrontReady, GRID_W, GRID_H } from '../render/avatar.js';
+import { avatarSprite, paintPreview as paintFull, baseFrontReady, hairThumb, GRID_W, GRID_H } from '../render/avatar.js';
 
 /** 그림 일부(칸 단위 영역)를 확대해 그린 캔버스 */
 function crop(avatar, { x = 0, y = 0, w = GRID_W, h = GRID_H }, scale, opts) {
@@ -53,7 +53,7 @@ export function openAvatarMaker(root, { avatar, first = false, onSave, onCancel 
   function render() {
     const hair = $('.av-hair'); hair.innerHTML = '';
     HAIRS.forEach((name, i) => {
-      const b = option(name, cur.hair === i, crop({ ...cur, hair: i }, { x: 0, y: 0, w: GRID_W, h: 23 }, 3));
+      const b = option(name, cur.hair === i, hairThumb(i) || crop({ ...cur, hair: i }, { x: 0, y: 0, w: GRID_W, h: 23 }, 3)); // 머리 모양만 다른 실제 그림
       b.onclick = () => { cur = { ...cur, hair: i }; render(); }; // 상의 색·하의는 그대로
       hair.append(b);
     });
@@ -82,7 +82,7 @@ export function openAvatarMaker(root, { avatar, first = false, onSave, onCancel 
   const cancel = $('[data-cancel]');
   if (cancel) cancel.onclick = () => { clearInterval(timer); onCancel?.(); };
   render();
-  baseFrontReady.then(() => { if (root.isConnected) paintPreview(); });
+  baseFrontReady.then(() => { if (root.isConnected) render(); });
   root.hidden = false;
   $('[data-save]').focus({ preventScroll: true });
   return { close: () => { clearInterval(timer); root.hidden = true; root.innerHTML = ''; } };

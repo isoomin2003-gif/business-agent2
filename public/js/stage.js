@@ -9,12 +9,14 @@ const W = 320, H = 180;
 const BUBBLE_MS = 5200;
 // 아바타 크기 배율 (320×180 좌표 기준 서 있을 때 키 18 × 배율)
 export const AVATAR_SCALE = 1; // 배경 교체 전과 같은 크기 (장면 높이 180 중 키 18)
+// 장소별 아바타 확대 (발밑 기준으로 가로·세로 같은 비율). 내 방만 1.5배 — 옥상·공원은 확인 후 정함. 이름표(HTML)는 크기 그대로
+export const PLACE_AVATAR_SCALE = { room: 1.5 };
 const STAND_H = 18 * AVATAR_SCALE, SIT_H = 15 * AVATAR_SCALE;
 /** 아바타를 발 위치 기준으로 확대해 그림 (픽셀 경계를 캔버스 실제 픽셀에 맞춤) */
-function drawBig(c, x, y, avatar, opts) {
+function drawBig(c, x, y, avatar, opts, scale = 1) {
   c.save();
-  c.translate(Math.round(x * SCALE) / SCALE, Math.round(y * SCALE) / SCALE);
-  c.scale(AVATAR_SCALE, AVATAR_SCALE);
+  c.translate(Math.round(x * SCALE) / SCALE, Math.round(y * SCALE) / SCALE); // 발밑이 원점: 확대해도 발바닥 위치는 그대로
+  c.scale(AVATAR_SCALE * scale, AVATAR_SCALE * scale);
   drawAvatar(c, 0, 0, avatar, opts);
   c.restore();
 }
@@ -231,7 +233,7 @@ export class Stage {
       const frame = Math.floor(t / STEP_MS);
       drawBig(c, p.x, seated ? p.y + 2 : p.y, e.avatar, {
         pose: p.moving ? 'walk' : seated ? 'sit' : 'stand', frame, dir: p.dir, back: seated ? seatDef?.back : !!(p.moving && p.up), me: e.me,
-      });
+      }, PLACE_AVATAR_SCALE[this.placeId] || 1);
       if (e.me) {
         if (p.moving && frame !== e.stepFrame) this.handlers.step?.(p);
         e.stepFrame = p.moving ? frame : null;
