@@ -482,12 +482,12 @@ textarea#d-text { font-size: 18px; line-height: 1.8; }
 
 /* ── 아바타 꾸미기 (홈) ── */
 .av-home { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; }
-.av-home canvas { width: 30px; height: 54px; image-rendering: pixelated; }
+.av-home canvas { width: 30px; height: 54px; image-rendering: auto; }
 .av-maker { width: min(560px, 100%); margin: 0 auto; text-align: center; }
 .av-maker h2 { font-size: 26px; margin: 4px 0 4px; color: var(--accent); }
 .av-sub { margin: 0 0 12px; font-size: 14px; opacity: .85; }
 .av-stage { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 12px; }
-.av-preview { box-sizing: content-box; width: 120px; height: 216px; image-rendering: pixelated; background: radial-gradient(ellipse at 50% 92%, rgba(0,0,0,.25) 0 22%, transparent 23%), #f3e9d6; border: 3px solid #0e0a14; border-radius: 8px; box-shadow: var(--shadow); padding: 8px 20px; }
+.av-preview { box-sizing: content-box; width: 125px; height: 225px; image-rendering: auto; background: #f3e9d6; border: 3px solid #0e0a14; border-radius: 8px; box-shadow: var(--shadow); padding: 8px 20px; }
 .av-turn { display: flex; gap: 6px; }
 .av-turn .chip.on { background: var(--accent); color: var(--accent-ink); }
 .av-group { margin: 10px 0; }
