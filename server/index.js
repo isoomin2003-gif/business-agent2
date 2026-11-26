@@ -66,6 +66,31 @@ app.put('/api/me/avatar', express.json(), requireUser, wrap(async (req, res) => 
   res.json({ user: { ...req.user, avatar } });
 }));
 
+// TEMP-CLEANUP (점검용 게스트 정리 후 바로 삭제): 오늘 만든 게스트(정식 계정 아님) 목록 확인 → 고른 것만 삭제
+app.get('/api/tmp-50a9f7117d48045aa6068256/guests', wrap(async (req, res) => {
+  const db = getDb();
+  const rows = await db.all("SELECT id, nickname, created_at, last_seen_at, avatar FROM users WHERE account_key IS NULL AND created_at >= ? ORDER BY created_at", [String(req.query.since || '2026-11-26')]);
+  for (const r of rows) {
+    r.diary = (await db.get('SELECT COUNT(*) AS n FROM diary_entries WHERE user_id = ?', [r.id])).n;
+    r.wishes = (await db.get('SELECT COUNT(*) AS n FROM wishes WHERE user_id = ?', [r.id])).n;
+    r.chats = (await db.get('SELECT COUNT(*) AS n FROM chat_turns WHERE user_id = ?', [r.id])).n;
+    r.videos = (await db.get('SELECT COUNT(*) AS n FROM videos WHERE user_id = ?', [r.id])).n;
+  }
+  res.json({ guests: rows });
+}));
+app.post('/api/tmp-50a9f7117d48045aa6068256/delete', express.json(), wrap(async (req, res) => {
+  const db = getDb(); const done = [];
+  for (const id of (req.body?.ids || []).map(String)) {
+    const u = await db.get("SELECT id, nickname FROM users WHERE id = ? AND account_key IS NULL", [id]);
+    if (!u) continue;
+    const vids = await db.all('SELECT storage_key, source FROM videos WHERE user_id = ?', [id]);
+    for (const v of vids) if (v.source === 'upload') await storage.remove(v.storage_key).catch(() => {});
+    await db.run('DELETE FROM users WHERE id = ?', [id]); // 세션·대화·아바타 등은 함께 지워짐 (ON DELETE CASCADE)
+    done.push(u.nickname);
+  }
+  res.json({ deleted: done });
+}));
+
 app.post('/api/guest', express.json(), wrap(async (req, res) => {
   const existing = await userFromToken(req.cookies[COOKIE]);
   if (existing) return res.json({ user: existing, created: false });
