@@ -14,7 +14,7 @@ export async function askJson(system, user, { maxTokens = 700, temperature = 0.7
     });
     if (!res.ok) { console.warn(`[ai] OpenRouter HTTP ${res.status}`); return { ok: false, status: 'api_error' }; }
     const content = String((await res.json())?.choices?.[0]?.message?.content || '');
-    try { return { ok: true, json: JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] || '') }; } catch { return { ok: false, status: 'bad_json' }; }
+    try { return { ok: true, json: JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] || '') }; } catch { console.warn(`[ai] JSON이 아닌 응답: ${content.slice(0, 200)}`); return { ok: false, status: 'bad_json', raw: content.slice(0, 600) }; }
   } catch (e) {
     console.warn(`[ai] OpenRouter error: ${e.message}`);
     return { ok: false, status: 'api_error' };
