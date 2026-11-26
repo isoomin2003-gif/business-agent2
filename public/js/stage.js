@@ -9,8 +9,8 @@ const W = 320, H = 180;
 const BUBBLE_MS = 5200;
 // 아바타 크기 배율 (320×180 좌표 기준 서 있을 때 키 18 × 배율)
 export const AVATAR_SCALE = 1; // 배경 교체 전과 같은 크기 (장면 높이 180 중 키 18)
-// 장소별 아바타 확대 (발밑 기준으로 가로·세로 같은 비율). 내 방만 1.5배 — 옥상·공원은 확인 후 정함. 이름표(HTML)는 크기 그대로
-export const PLACE_AVATAR_SCALE = { room: 1.5 };
+// 장소별 아바타 확대 (발밑 기준으로 가로·세로 같은 비율). 내 방·옥상·공원 모두 1.5배. 이름표(HTML)는 크기 그대로
+export const PLACE_AVATAR_SCALE = { room: 1.5, rooftop: 1.5, park: 1.5 };
 const STAND_H = 18 * AVATAR_SCALE, SIT_H = 15 * AVATAR_SCALE;
 /** 아바타를 발 위치 기준으로 확대해 그림 (픽셀 경계를 캔버스 실제 픽셀에 맞춤) */
 function drawBig(c, x, y, avatar, opts, scale = 1) {
@@ -57,6 +57,9 @@ export class Stage {
   }
 
   on(name, fn) { this.handlers[name] = fn; }
+
+  /** 지금 장소의 아바타 배율 (발밑 기준) */
+  avScale() { return PLACE_AVATAR_SCALE[this.placeId] || 1; }
 
   resize() {
     if (this.resizePan()) return;
@@ -233,12 +236,12 @@ export class Stage {
       const frame = Math.floor(t / STEP_MS);
       drawBig(c, p.x, seated ? p.y + 2 : p.y, e.avatar, {
         pose: p.moving ? 'walk' : seated ? 'sit' : 'stand', frame, dir: p.dir, back: seated ? seatDef?.back : !!(p.moving && p.up), me: e.me,
-      }, PLACE_AVATAR_SCALE[this.placeId] || 1);
+      }, this.avScale());
       if (e.me) {
         if (p.moving && frame !== e.stepFrame) this.handlers.step?.(p);
         e.stepFrame = p.moving ? frame : null;
       }
-      if (e.wish && e.wish.until > Date.now()) this.drawWishIcon(c, p.x, (seated ? p.y + 2 - SIT_H : p.y - STAND_H) - 8, t, this.hover?.type === 'wish' && this.hover.id === e.id);
+      if (e.wish && e.wish.until > Date.now()) this.drawWishIcon(c, p.x, (seated ? p.y + 2 - SIT_H * this.avScale() : p.y - STAND_H * this.avScale()) - 8, t, this.hover?.type === 'wish' && this.hover.id === e.id);
     }
     this.layoutOverlay();
     this.updateCamera();
@@ -314,7 +317,7 @@ export class Stage {
       const lower = seated && Number(String(e.seat).replace(/\D/g, '')) % 2 === 0;
       e.tag.style.transform = lower ? 'translate(-50%, 115%)' : 'translate(-50%, 0)';
       if (e.bubble) {
-        const headTop = footY - (seated ? SIT_H : STAND_H) - (e.wish && e.wish.until > Date.now() ? 12 : 2);
+        const headTop = footY - (seated ? SIT_H : STAND_H) * this.avScale() - (e.wish && e.wish.until > Date.now() ? 12 : 2);
         // 말풍선 실제 폭·높이로 무대 안에 들어오게 (좁은 모바일 화면에서 잘리지 않도록)
         const bw = e.bubble.el.offsetWidth || 160, bh = e.bubble.el.offsetHeight || 40;
         e.bubble.el.style.left = `${Math.min(Math.max(p.x * k, bw / 2 + 4), W2 - bw / 2 - 4)}px`;
@@ -336,7 +339,7 @@ export class Stage {
     for (const e of this.entities.values()) {
       if (!e.wish || e.wish.until <= Date.now()) continue;
       const p = this.pos(e); const seated = !p.moving && e.seat;
-      const iy = (seated ? p.y + 2 - SIT_H : p.y - STAND_H) - 8;
+      const iy = (seated ? p.y + 2 - SIT_H * this.avScale() : p.y - STAND_H * this.avScale()) - 8;
       if (Math.abs(x - p.x) <= 6 + pad && Math.abs(y - iy) <= 6 + pad) return { type: 'wish', id: e.id, label: e.me ? '내가 빈 소원' : `${e.nickname} 님의 소원 보기` };
     }
     if (this.place && this.placeId !== 'room') {
