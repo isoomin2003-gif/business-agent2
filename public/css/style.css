@@ -536,3 +536,12 @@ textarea#d-text { font-size: 18px; line-height: 1.8; }
 .diary-modal .video-box { width: 100%; }
 .diary-form .d-attach .btn { padding-left: 6px; padding-right: 6px; display: flex; align-items: center; }
 @media (max-width: 460px) { .diary-form .d-attach.with-cam { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ── 창 스크롤바가 생겼다 사라져도 내용 폭이 바뀌지 않게 (스크롤바 자리를 늘 비워 둠) ──
+   폭에 따라 높이가 정해지는 미리보기(16:9)가 있는 창에서, '스크롤바 있음(폭 좁음 → 딱 맞음)'과 '없음(폭 넓음 → 넘침)'이
+   번갈아 성립해 마우스를 올릴 때마다 흔들리던 문제를 막음. 작은 화면에서 필요한 스크롤은 그대로 */
+.modal { scrollbar-gutter: stable; }
+/* 다이어리 버튼: 마우스를 올리면 색·테두리 색만 바뀜 (밝기 필터·움직임 없음) */
+.diary-modal .btn:hover:not(:disabled) { filter: none; background: #4a3a63; border-color: #ffd77a; }
+.diary-modal .btn-primary:hover:not(:disabled) { background: #ffe08a; }
+.diary-modal .btn:focus-visible { outline: 3px solid #ffd77a; outline-offset: 1px; }
