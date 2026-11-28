@@ -35,10 +35,8 @@ export function uploadVideo(file, onProgress) {
 }
 
 export const pad = (n) => String(n).padStart(2, '0');
-export function localToday() {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+/** 오늘 날짜 (한국 시간 기준 — 다이어리 날짜와 책장의 달이 어느 기기에서든 같게) */
+export { kstToday as localToday } from './shared/books.js';
 export function koDate(s, withDay = true) {
   const [y, m, d] = s.split('-').map(Number);
   const day = '일월화수목금토'[new Date(y, m - 1, d).getDay()];

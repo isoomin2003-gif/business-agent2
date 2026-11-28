@@ -3,6 +3,7 @@ import * as net from './net.js';
 import { Stage, drawAvatarScaled } from './stage.js';
 import { SCALE, ready as backdropsReady } from './render/backdrops.js';
 import { PLACES, routeTo, pathDuration } from './shared/places.js';
+import { coloredMonths } from './shared/books.js';
 import { room } from './scenes/room.js';
 import { rooftop } from './scenes/rooftop.js';
 import { park, noteSlots } from './scenes/park.js';
@@ -39,7 +40,7 @@ function drawLanding() {
   cv.width = 320 * SCALE; cv.height = 180 * SCALE;
   const c = cv.getContext('2d');
   c.setTransform(SCALE, 0, 0, SCALE, 0, 0); c.imageSmoothingEnabled = false;
-  room.background(c, { bookCount: user ? bookCount : 0 });
+  room.background(c, { bookMonths: user ? bookMonths : [] });
   room.animate(c, 0);
   drawAvatarScaled(c, PLACES.room.seats.chair.x, PLACES.room.seats.chair.y + 2, user?.avatar, { pose: 'sit', back: true });
   room.props[0].draw(c);
@@ -289,7 +290,7 @@ async function enterRoom(from = 'door') {
   place = 'room';
   roomSeat = null;
   roomMusic.stop(); // 방에 들어올 때는 늘 조용하게 (직접 켜야 재생)
-  stage.setScene(room, PLACES.room, 'room', { bookCount });
+  stage.setScene(room, PLACES.room, 'room', { bookMonths });
   const n = PLACES.room.targets[from] || PLACES.room.spawn;
   stage.upsert('me', { nickname: user.nickname, avatar: user.avatar, me: true, points: [{ x: n.x, y: n.y }], startAt: net.now(), seat: null });
   setHud();
@@ -300,15 +301,15 @@ async function enterRoom(from = 'door') {
   }
 }
 
-/** 방 책장: 기록 수만큼 책등에 색을 입힘 (위 칸부터 왼쪽→오른쪽, 기록이 없으면 모두 배경 그림의 중성색) */
-let bookCount = 0;
-async function loadBookCount() {
-  try { const { months } = await api('/api/diary/months'); bookCount = months.reduce((s, m) => s + m.count, 0); } catch { /* */ }
-  return bookCount;
+/** 방 책장: 책 12권 = 1~12월. 올해(한국 시간) 기록이 있는 달의 책만 색칠, 나머지는 회갈색 */
+let bookMonths = [];
+async function loadBookMonths() {
+  try { const { months } = await api('/api/diary/months'); bookMonths = coloredMonths(months); } catch { /* */ }
+  return bookMonths;
 }
 async function refreshRoomBooks() {
-  await loadBookCount();
-  if (place === 'room' && stage) stage.renderBackground({ bookCount });
+  await loadBookMonths();
+  if (place === 'room' && stage) stage.renderBackground({ bookMonths });
   if (!$('#landing').hidden) drawLanding();
 }
 
@@ -544,6 +545,7 @@ function onStep(p) {
 // 디버그/자동 테스트용 읽기 전용 상태
 window.__haru = {
   get place() { return place; }, get mySid() { return mySid; }, get user() { return user; },
+  books: () => bookMonths, // 색칠된 책(1~12월)
   entities: () => stage ? [...stage.entities.values()].map((e) => ({ id: e.id, nickname: e.nickname, avatar: e.avatar || null, seat: e.seat, me: e.me, bubble: e.bubble?.el.textContent || null, wish: !!e.wish, pos: stage.pos(e), points: e.points, startAt: e.startAt })) : [],
   radio: () => { const a = document.getElementById('radio-audio'); return { src: a.src, paused: a.paused, muted: a.muted, time: a.currentTime, state: radio.getState() }; },
   ambience: () => amb.isNightOn(),

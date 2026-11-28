@@ -15,17 +15,17 @@ for (const [id, src] of Object.entries(files)) {
   IMGS[id] = img;
   loads.push(img.decode ? img.decode().catch(() => new Promise((r) => { img.onload = r; img.onerror = r; })) : new Promise((r) => { img.onload = r; img.onerror = r; }));
 }
-// 방 책장의 책 12권(한 단에 4권): 기록이 생길 때마다 하나씩 색을 입힌 그림(책등 윤곽 밖은 투명)과 위치
+// 방 책장의 책 12권(한 단에 4권) = 1~12월: 색을 입힌 책등 그림(책등 윤곽 밖은 투명)과 위치. 순서는 윗줄 왼쪽부터 1월 → 아랫줄 오른쪽 12월
 const booksImg = new Image(); booksImg.src = `/img/scenes/room-books.png?v=${V}`;
 let booksMeta = null;
 loads.push(booksImg.decode().catch(() => {}), fetch(`/img/scenes/room-books.json?v=${V}`).then((r) => r.json()).then((j) => { booksMeta = j; }).catch(() => {}));
 export const BOOK_SLOTS = () => booksMeta?.books.length || 0;
-/** 앞에서부터 n권의 책등에 색 (선반 위 칸부터 왼쪽→오른쪽) */
-export function drawColoredBooks(c, n) {
-  if (!booksMeta || !booksImg.complete || !n) return;
+/** months(1~12)에 해당하는 달의 책등에만 색 */
+export function drawColoredBooks(c, months) {
+  if (!booksMeta || !booksImg.complete || !months?.length) return;
   const [iw, ih] = booksMeta.image, kx = W / iw, ky = H / ih;
   const smooth = c.imageSmoothingEnabled; c.imageSmoothingEnabled = true;
-  for (const b of booksMeta.books.slice(0, n)) c.drawImage(booksImg, b.ax, 0, b.w, b.h, b.x * kx, b.y * ky, b.w * kx, b.h * ky);
+  for (const m of months) { const b = booksMeta.books[m - 1]; if (b) c.drawImage(booksImg, b.ax, 0, b.w, b.h, b.x * kx, b.y * ky, b.w * kx, b.h * ky); }
   c.imageSmoothingEnabled = smooth;
 }
 

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import express from 'express';
+import { now } from './kst.js';
 import multer from 'multer';
 import { getDb, nowIso } from './db.js';
 import { getStorage } from './storage.js';
@@ -49,7 +50,7 @@ export function isPlausibleToday(date) {
   if (!DATE_RE.test(date)) return false;
   const d = Date.parse(`${date}T12:00:00Z`);
   if (Number.isNaN(d)) return false;
-  return Math.abs(d - Date.now()) <= 1000 * 60 * 60 * 38;
+  return Math.abs(d - now()) <= 1000 * 60 * 60 * 38; // now(): 평소엔 실제 시각 (테스트에서만 시계를 옮길 수 있음)
 }
 
 /** 영상을 저장소(로컬 디스크 또는 Supabase 비공개 버킷)에 넣고 DB에 기록 */

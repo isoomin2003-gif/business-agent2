@@ -10,7 +10,7 @@ export const room = {
   id: 'room',
   background(c, ctx) {
     drawBackdrop(c, 'room');
-    drawColoredBooks(c, ctx?.bookCount || 0); // 기록 하나마다 책등 하나에 색
+    drawColoredBooks(c, ctx?.bookMonths || []); // 올해 기록이 있는 달의 책만 색 (1~12월 고정 자리)
   },
   animate(c, t) {
     // CD: 재생 중에는 그림 속 CD가 천천히 돌고, 멈추면 그 각도에서 정지

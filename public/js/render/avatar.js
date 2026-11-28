@@ -193,8 +193,8 @@ export function avatarSprite(avatar, { pose = 'stand', frame = 0, dir = 0, back 
  */
 export function drawAvatar(c, x, y, avatar, { pose = 'stand', frame = 0, dir = 0, back = false, me = false } = {}) {
   const sit = pose === 'sit';
-  c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(x - 4, y - 1, 8, 1.5);
-  if (me && !sit) { c.fillStyle = 'rgba(255,207,110,.55)'; c.fillRect(x - 5, y + 0.5, 10, 1); }
+  // 발밑 그림자: 신발 바로 아래에 작은 타원 (발바닥 선 아래로는 내려가지 않음 → 발과 이름표 사이엔 바닥만). '내 아바타' 표시 막대는 없앰(이름표의 (나)로 구분)
+  if (!sit) { c.fillStyle = 'rgba(0,0,0,.28)'; c.beginPath(); c.ellipse(x, y - 0.55, 3.6, 0.55, 0, 0, Math.PI * 2); c.fill(); }
   const prev = c.imageSmoothingEnabled;
   const hi = avatarHi(avatar, { pose, frame, back, dir });
   if (hi) {
