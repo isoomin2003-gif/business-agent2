@@ -545,3 +545,9 @@ textarea#d-text { font-size: 18px; line-height: 1.8; }
 .diary-modal .btn:hover:not(:disabled) { filter: none; background: #4a3a63; border-color: #ffd77a; }
 .diary-modal .btn-primary:hover:not(:disabled) { background: #ffe08a; }
 .diary-modal .btn:focus-visible { outline: 3px solid #ffd77a; outline-offset: 1px; }
+
+/* 휴대폰 다이어리: 카메라 · 사진 · 지우기 세 칸, 카메라 메뉴는 버튼 아래에 떠서 다른 칸을 밀지 않음 */
+.diary-form .d-attach { position: relative; }
+.diary-form .cam-menu { position: absolute; left: 0; top: calc(100% + 6px); z-index: 5; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--paper); border: 2px solid #0e0a14; border-radius: 8px; box-shadow: 0 4px 0 #0e0a14; min-width: 160px; }
+.diary-form .cam-menu[hidden] { display: none; }
+.diary-form .cam-menu .btn { justify-content: flex-start; min-height: 44px; }

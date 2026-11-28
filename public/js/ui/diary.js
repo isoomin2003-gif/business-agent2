@@ -26,14 +26,28 @@ export async function openDiary({ onViewInShelf, onSaved } = {}) {
         <div class="video-box" id="d-video"><span>오늘 가장 기억에 남는 순간의 사진이나 영상을 골라 주세요</span></div>
         <div class="progress" id="d-prog" style="visibility:hidden"><i></i></div>
         <!-- 버튼 글자·개수가 바뀌지 않아 마우스를 올리거나 누르거나 파일을 고른 뒤에도 자리가 그대로 -->
-        <div class="d-attach${touch ? ' with-cam' : ''}">
+        ${touch ? `
+        <!-- 휴대폰: 카메라(사진 촬영·동영상 촬영 중 고르기) · 사진(기본 사진·동영상 선택창, 갤러리의 사진과 영상을 한 화면에서) -->
+        <div class="d-attach">
+          <button type="button" class="btn btn-small" id="d-cam-btn" data-pick aria-haspopup="menu" aria-expanded="false" aria-controls="d-cam-menu">📷 카메라</button>
+          <label class="btn btn-small" for="d-gallery" data-pick>🖼 사진</label>
+          <input id="d-gallery" type="file" accept="image/*,video/*" hidden>
+          <button class="btn btn-small" id="d-clear" disabled>✕ 지우기</button>
+          <div class="cam-menu" id="d-cam-menu" role="menu" hidden>
+            <label class="btn btn-small" for="d-cam-photo" role="menuitem" data-pick>📸 사진 촬영</label>
+            <input id="d-cam-photo" type="file" accept="image/*" capture="environment" hidden>
+            <label class="btn btn-small" for="d-cam-video" role="menuitem" data-pick>🎥 동영상 촬영</label>
+            <input id="d-cam-video" type="file" accept="video/*" capture="environment" hidden>
+          </div>
+        </div>` : `
+        <!-- PC: 사진 · 동영상 (버튼 글자·자리가 바뀌지 않아 마우스를 올리거나 누르거나 파일을 고른 뒤에도 그대로) -->
+        <div class="d-attach">
           <label class="btn btn-small" for="d-photo" data-pick>🖼 사진</label>
           <input id="d-photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
           <label class="btn btn-small" for="d-file" data-pick>🎬 동영상</label>
           <input id="d-file" type="file" accept="video/*" hidden>
-          ${touch ? `<label class="btn btn-small" for="d-cam" data-pick>📷 촬영</label><input id="d-cam" type="file" accept="video/*" capture="environment" hidden>` : ''}
           <button class="btn btn-small" id="d-clear" disabled>✕ 지우기</button>
-        </div>
+        </div>`}
         <label for="d-text"><b>오늘의 한 문장</b> <span class="muted" id="d-count"></span></label>
         <textarea id="d-text" rows="2" maxlength="${MAX}" placeholder="예) 퇴근길 버스에서 본 노을이 오늘 제일 예뻤다."></textarea>
         <div id="d-first" class="notice" hidden>
@@ -73,9 +87,15 @@ export async function openDiary({ onViewInShelf, onSaved } = {}) {
   text.addEventListener('focus', () => setTimeout(() => $('#d-save').scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 350));
 
   async function handleFile(input) {
-    const file = input.files?.[0];
+    let file = input.files?.[0];
     input.value = '';
-    if (!file) return; // 선택 취소: 작성 중인 문장은 그대로
+    if (!file) return; // 선택·촬영 취소: 작성 중인 문장과 이미 고른 첨부는 그대로
+    // 일부 휴대폰 갤러리는 파일 종류를 비워서 줌 → 확장자로 채움
+    if (!file.type) {
+      const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
+      const type = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', heif: 'image/heif', mp4: 'video/mp4', m4v: 'video/x-m4v', mov: 'video/quicktime', webm: 'video/webm', '3gp': 'video/3gpp' }[ext];
+      if (type) file = new File([file], file.name, { type, lastModified: file.lastModified });
+    }
     const isPhoto = file.type.startsWith('image/');
     if (!isPhoto && !file.type.startsWith('video/')) return setStatus('사진이나 영상 파일만 고를 수 있어요.', 'err');
     if (/heic|heif/i.test(file.type)) return setStatus('HEIC 사진은 아직 열 수 없어요. JPG나 PNG로 골라 주세요.', 'err');
@@ -95,7 +115,13 @@ export async function openDiary({ onViewInShelf, onSaved } = {}) {
   const remember = () => { keep = { modal: m.el.scrollTop, page: window.scrollY }; };
   const restore = () => { if (!m.el.isConnected) { window.removeEventListener('focus', restore); return; } if (!keep) return; const k = keep; requestAnimationFrame(() => { m.el.scrollTop = k.modal; window.scrollTo(window.scrollX, k.page); }); };
   m.$$('[data-pick]').forEach((l) => { l.addEventListener('pointerdown', remember); l.addEventListener('keydown', remember); });
-  for (const id of ['#d-photo', '#d-file', '#d-cam']) {
+  // 카메라: 사진 촬영 / 동영상 촬영 중 고르는 작은 메뉴 (창 위에 떠서 다른 칸을 밀지 않음)
+  const camBtn = $('#d-cam-btn'), camMenu = $('#d-cam-menu');
+  const camOpen = (on) => { if (!camMenu) return; camMenu.hidden = !on; camBtn.setAttribute('aria-expanded', String(on)); };
+  camBtn?.addEventListener('click', (e) => { e.stopPropagation(); camOpen(camMenu.hidden); });
+  camMenu?.querySelectorAll('label').forEach((l) => l.addEventListener('click', () => setTimeout(() => camOpen(false), 0)));
+  m.el.addEventListener('click', (e) => { if (camMenu && !camMenu.hidden && !camMenu.contains(e.target) && e.target !== camBtn) camOpen(false); });
+  for (const id of ['#d-photo', '#d-file', '#d-gallery', '#d-cam-photo', '#d-cam-video']) {
     const input = $(id); if (!input) continue;
     input.addEventListener('change', (e) => { restore(); handleFile(e.target); });
     input.addEventListener('cancel', restore); // 선택 취소
